@@ -6,15 +6,18 @@ from app.config import settings
 
 
 database_url = settings.DATABASE_URL
+if database_url.startswith("mysql://"):
+    database_url = database_url.replace("mysql://", "mysql+pymysql://", 1)
+
 if database_url.startswith("mysql"):
     try:
         # Test connection or fallback gracefully to SQLite for local development
         from sqlalchemy import create_engine as test_engine
-        t = test_engine(database_url, connect_args={"connect_timeout": 2})
+        t = test_engine(database_url, connect_args={"connect_timeout": 3})
         conn = t.connect()
         conn.close()
-    except Exception:
-        print("[WARN] MySQL server unavailable. Falling back to local SQLite database 'investigation.db'")
+    except Exception as e:
+        print(f"[WARN] MySQL server connection failed ({e}). Falling back to local SQLite database 'investigation.db'")
         database_url = "sqlite:///./investigation.db"
 
 if database_url.startswith("sqlite"):
