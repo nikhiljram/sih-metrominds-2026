@@ -1,7 +1,7 @@
 {
-    "version": 2,
-    "buildCommand": "cd frontend && npm install && npm run build",
-    "outputDirectory": "frontend/dist",
+    "rewrites": [
+        { "source": "/(.*)", "destination": "/index.html" }
+    ],
     "env": {
         "VITE_API_URL": "https://sih-metrominds-2026-production.up.railway.app/api/v1"
     }
