@@ -46,10 +46,20 @@ def get_db():
 
 
 def init_db():
-    """Create all tables from ORM models."""
+    """Create all tables from ORM models and ensure schema column widths."""
     from app.models import (  # noqa: F401
         station, user, case, case_member, document,
         chunk, entity, entity_source, relationship,
         event, chat_session, chat_message, audit_log,
     )
     Base.metadata.create_all(bind=engine)
+
+    # Ensure document_type is wide enough in MySQL
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            if engine.name == "mysql":
+                conn.execute(text("ALTER TABLE documents MODIFY COLUMN document_type VARCHAR(100) DEFAULT 'OTHER'"))
+                conn.commit()
+    except Exception as e:
+        print(f"ℹ️ Schema adjustment note: {e}")
