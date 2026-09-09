@@ -187,7 +187,7 @@ function HeaderBar({ user, station }: { user: any, station: any }) {
 // --- 1. LOGIN VIEW ---
 function LoginView({ onLoginSuccess }: { onLoginSuccess: (data: any) => void }) {
   const navigate = useNavigate();
-  const [employeeId, setEmployeeId] = useState('INV-2026-001');
+  const [employeeId, setEmployeeId] = useState('OFF-2026-001');
   const [password, setPassword] = useState('admin123');
   const [stationId, setStationId] = useState<number>(1);
   const [stations, setStations] = useState<any[]>([]);

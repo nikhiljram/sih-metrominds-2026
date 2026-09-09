@@ -60,7 +60,23 @@ def seed_database():
             db.add(user)
             db.commit()
             db.refresh(user)
-            print("Created Officer user")
+            print("Created Officer user OFF-2026-001")
+
+        user_inv = db.query(User).filter_by(employee_id="INV-2026-001").first()
+        if not user_inv:
+            user_inv = User(
+                employee_id="INV-2026-001",
+                name="Agent D. Vance",
+                email="agent.vance@ksp.gov.in",
+                password_hash=pwd_context.hash("admin123"),
+                role="ADMIN",
+                designation="Senior Investigator",
+                station_id=station.id,
+                is_active=True
+            )
+            db.add(user_inv)
+            db.commit()
+            print("Created Officer user INV-2026-001")
 
         # 3. Sample Case
         case = db.query(Case).filter_by(case_number="FIR-2026-0891").first()
