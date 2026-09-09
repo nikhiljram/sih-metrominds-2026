@@ -330,9 +330,10 @@ function CreateCaseModal({ isOpen, onClose, onCaseCreated }: { isOpen: boolean, 
       setSubmitting(false);
       onCaseCreated();
       onClose();
-    } catch (err) {
+    } catch (err: any) {
       setSubmitting(false);
-      alert('Failed to create case. Check fields.');
+      const msg = err.response?.data?.detail || err.response?.data?.message || 'Failed to create case. Ensure backend database is connected and fields are valid.';
+      alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
     }
   };
 
