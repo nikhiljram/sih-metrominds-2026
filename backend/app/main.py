@@ -24,6 +24,13 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
     # Create tables
     init_db()
+    # Auto-seed database if empty
+    try:
+        from scripts.seed import seed_database
+        seed_database()
+        print("✅ Database seeded successfully")
+    except Exception as e:
+        print(f"ℹ️ Seed skipped or completed: {e}")
     # Create upload directory
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     print("✅ Database initialized")
