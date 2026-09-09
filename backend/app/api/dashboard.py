@@ -55,11 +55,23 @@ def get_dashboard(
         .all()
     )
 
-    recent_cases = []
-    for c in recent_cases_raw:
-        doc_count = db.query(sqlfunc.count(Document.id)).filter(Document.case_id == c.id).scalar() or 0
-        entity_count = db.query(sqlfunc.count(Entity.id)).filter(Entity.case_id == c.id).scalar() or 0
-        recent_cases.append(CaseSummary(
+    case_ids = [c.id for c in recent_cases_raw]
+    doc_counts = dict(
+        db.query(Document.case_id, sqlfunc.count(Document.id))
+        .filter(Document.case_id.in_(case_ids))
+        .group_by(Document.case_id)
+        .all()
+    ) if case_ids else {}
+
+    entity_counts = dict(
+        db.query(Entity.case_id, sqlfunc.count(Entity.id))
+        .filter(Entity.case_id.in_(case_ids))
+        .group_by(Entity.case_id)
+        .all()
+    ) if case_ids else {}
+
+    recent_cases = [
+        CaseSummary(
             id=c.id,
             case_number=c.case_number,
             title=c.title,
@@ -67,9 +79,11 @@ def get_dashboard(
             priority=c.priority,
             case_type=c.case_type,
             created_at=c.created_at,
-            document_count=doc_count,
-            entity_count=entity_count,
-        ).model_dump())
+            document_count=doc_counts.get(c.id, 0),
+            entity_count=entity_counts.get(c.id, 0),
+        ).model_dump()
+        for c in recent_cases_raw
+    ]
 
     # Recent activity (last 15)
     recent_logs = (

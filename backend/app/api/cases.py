@@ -21,8 +21,8 @@ router = APIRouter(prefix="/cases", tags=["Cases"])
 def generate_case_number() -> str:
     """Generate case number: CASE-YYYY-NNNNN"""
     year = datetime.now().year
-    import random
-    num = random.randint(10000, 99999)
+    import secrets
+    num = secrets.randbelow(90000) + 10000
     return f"CASE-{year}-{num:05d}"
 
 
@@ -162,6 +162,8 @@ def get_case(
     c = db.query(Case).filter(Case.id == case_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Case not found")
+    if current_user.role not in ["SUPER_ADMIN", "ADMIN"] and c.station_id != current_user.station_id:
+        raise HTTPException(status_code=403, detail="Not authorized to access cases outside your station")
 
     doc_count = db.query(sqlfunc.count(Document.id)).filter(Document.case_id == c.id).scalar()
     entity_count = db.query(sqlfunc.count(Entity.id)).filter(Entity.case_id == c.id).scalar()
@@ -206,6 +208,8 @@ def update_case(
     c = db.query(Case).filter(Case.id == case_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Case not found")
+    if current_user.role not in ["SUPER_ADMIN", "ADMIN"] and c.station_id != current_user.station_id:
+        raise HTTPException(status_code=403, detail="Not authorized to update cases outside your station")
 
     update_fields = case_data.model_dump(exclude_unset=True)
     for field, value in update_fields.items():
