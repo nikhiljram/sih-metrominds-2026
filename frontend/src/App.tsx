@@ -921,9 +921,16 @@ function CaseEvidenceSubView({ caseId }: { caseId: string }) {
                   <td>{doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : 'N/A'}</td>
                   <td className="num">{doc.total_chunks || 0}</td>
                   <td><span className="badge status-active">Vault Locked & Indexed</span></td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td style={{ textAlign: 'right', display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                     <button className="open-btn" onClick={() => setSelectedDoc(doc)}>
-                      Preview File
+                      Preview Text
+                    </button>
+                    <button
+                      className="open-btn"
+                      style={{ background: '#2563eb', color: '#fff' }}
+                      onClick={() => window.open(`${api.defaults.baseURL}/cases/${caseId}/documents/${doc.id}/file`, '_blank')}
+                    >
+                      View Real Doc 📄
                     </button>
                   </td>
                 </tr>
@@ -1259,6 +1266,15 @@ function DocumentPreviewModal({ doc, caseId, onClose }: { doc: any; caseId: stri
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '20px' }}>
+          <button
+            className="primary"
+            onClick={() => {
+              const fileUrl = `${api.defaults.baseURL}/cases/${caseId}/documents/${doc.id}/file`;
+              window.open(fileUrl, '_blank');
+            }}
+          >
+            Open Real Document 📄
+          </button>
           <button className="secondary" onClick={onClose}>Close Preview</button>
         </div>
       </div>
@@ -1370,9 +1386,16 @@ function CaseDocumentsSubView({ caseId, onDocumentUploaded }: { caseId: string; 
                     </span>
                   </td>
                   <td>{doc.uploaded_at ? doc.uploaded_at.slice(0, 10) : 'Just now'}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td style={{ textAlign: 'right', display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                     <button className="open-btn" onClick={() => setSelectedDoc(doc)}>
-                      Preview File
+                      Preview Text
+                    </button>
+                    <button
+                      className="open-btn"
+                      style={{ background: '#2563eb', color: '#fff' }}
+                      onClick={() => window.open(`${api.defaults.baseURL}/cases/${caseId}/documents/${doc.id}/file`, '_blank')}
+                    >
+                      View Real Doc 📄
                     </button>
                   </td>
                 </tr>
