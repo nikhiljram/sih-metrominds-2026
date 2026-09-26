@@ -40,63 +40,88 @@ class LLMProvider:
             return self._heuristic_fallback(prompt)
 
     def _heuristic_fallback(self, prompt: str) -> str:
-        """Question-aware conversational synthesis for clean chatbot responses."""
+        """Question-aware conversational synthesis for distinct chatbot responses."""
+        import re
+
         question = ""
         if "OFFICER'S QUESTION:" in prompt:
             q_part = prompt.split("OFFICER'S QUESTION:")[-1].strip()
             question = q_part.split("\n")[0].strip()
 
-        stopwords = {'who', 'what', 'is', 'the', 'are', 'was', 'a', 'an', 'and', 'or', 'to', 'of', 'in', 'on', 'with', 'for', 'case'}
-        keywords = [w.lower() for w in question.replace('?', '').replace(',', '').split() if w.lower() not in stopwords and len(w) > 2]
+        q_lower = question.lower()
+        stopwords = {'who', 'what', 'where', 'when', 'why', 'how', 'is', 'the', 'are', 'was', 'a', 'an', 'and', 'or', 'to', 'of', 'in', 'on', 'with', 'for', 'case', 'about'}
+        keywords = [w for w in re.findall(r'\w+', q_lower) if w not in stopwords and len(w) > 2]
 
         lines = prompt.split('\n')
-        extracted_facts = []
-
+        
+        # Clean lines removing headers and boilerplate disclaimer
+        clean_lines = []
         for line in lines:
             stripped = line.strip().strip('"').strip("'")
             if not stripped or stripped.startswith('[') or stripped.startswith('---') or stripped.startswith('SYSTEM') or stripped.startswith('OFFICER') or stripped.startswith('CASE EVIDENCE'):
                 continue
-            if stripped.startswith('- ') or '|' in stripped or any(kw in stripped.lower() for kw in keywords) or len(stripped) > 25:
-                # Clean up repeated noise lines
-                if stripped not in extracted_facts and not stripped.startswith('Page ') and not stripped.startswith('Source:'):
-                    extracted_facts.append(stripped)
+            if 'SYNTHETIC FORENSIC CASE REPORT' in stripped or 'IMPORTANT: This document is entirely fictional' in stripped or 'must not be treated as a real' in stripped:
+                continue
+            clean_lines.append(stripped)
 
-        paragraphs = []
-        if question:
-            paragraphs.append(f"Here is the detailed summary regarding **\"{question}\"** based on the active case dossier:\n")
-        else:
-            paragraphs.append("Here is the executive summary based on the active case dossier:\n")
+        # 1. Answer "WHO" questions (Persons, Suspects, Entities)
+        if 'who' in q_lower or any(kw in ['person', 'suspect', 'arun', 'ravi', 'people', 'individual'] for kw in keywords):
+            person_lines = []
+            for l in clean_lines:
+                if any(kw in l.lower() for kw in keywords) or 'person' in l.lower() or 'ent-' in l.lower() or 'suspect' in l.lower() or 'interest' in l.lower():
+                    person_lines.append(l)
 
-        # Synthesize into clean readable text blocks
-        main_body_sentences = []
-        key_details = []
+            if person_lines:
+                res = [f"### Entity & Person Profile: **{question}**\n"]
+                res.append("Based on the evidence dossier, the following individuals and entity profiles were identified:\n")
+                for pl in person_lines[:5]:
+                    res.append(f"• **{pl.lstrip('-').replace('|', ' — ').strip()}**")
+                return "\n".join(res)
 
-        for fact in extracted_facts:
-            clean_text = fact.replace('|', ' • ').replace('  ', ' ').strip()
-            if len(clean_text) > 30 and not clean_text.startswith('-'):
-                if clean_text not in main_body_sentences:
-                    main_body_sentences.append(clean_text)
-            elif clean_text.startswith('-') or ' • ' in clean_text:
-                if clean_text not in key_details:
-                    key_details.append(clean_text)
+        # 2. Answer "WHERE" questions (Location, Place, Address)
+        if 'where' in q_lower or any(kw in ['location', 'place', 'address', 'area', 'maddur', 'near', 'city'] for kw in keywords):
+            loc_lines = []
+            for l in clean_lines:
+                if any(kw in l.lower() for kw in keywords) or 'location' in l.lower() or 'maddur' in l.lower() or 'area' in l.lower() or 'near' in l.lower() or 'district' in l.lower():
+                    loc_lines.append(l)
 
-        if main_body_sentences:
-            paragraphs.append(" ".join(main_body_sentences[:4]))
-            paragraphs.append("")
+            if loc_lines:
+                res = [f"### Incident Location & Spatial Intelligence\n"]
+                res.append(f"Regarding **\"{question}\"**, the evidence dossier logs the following location details:\n")
+                for ll in loc_lines[:5]:
+                    res.append(f"• {ll.lstrip('-').replace('|', ' — ').strip()}")
+                return "\n".join(res)
 
-        if key_details:
-            paragraphs.append("### Key Case Highlights")
-            for item in key_details[:6]:
-                paragraphs.append(f"• {item.lstrip('-').strip()}")
-            paragraphs.append("")
+        # 3. Answer "WHAT" / "SUMMARY" questions (Incident Summary)
+        if 'what' in q_lower or 'summary' in q_lower or 'incident' in q_lower:
+            summary_lines = []
+            for l in clean_lines:
+                if 'summary' in l.lower() or 'incident' in l.lower() or 'alleged' in l.lower() or 'occurred' in l.lower() or 'threw' in l.lower() or 'vehicle' in l.lower() or len(l) > 40:
+                    summary_lines.append(l)
 
-        if not main_body_sentences and not key_details and extracted_facts:
-            paragraphs.append(" ".join(extracted_facts[:5]))
+            if summary_lines:
+                res = [f"### Case Incident Summary\n"]
+                res.append(" ".join(summary_lines[:3]))
+                if len(summary_lines) > 3:
+                    res.append("\n**Key Incident Details:**")
+                    for sl in summary_lines[3:6]:
+                        res.append(f"• {sl.lstrip('-').replace('|', ' — ').strip()}")
+                return "\n".join(res)
 
-        if not extracted_facts:
-            paragraphs.append("The case files have been registered and processed. Upload additional forensic evidence files to view complete cross-entity intelligence.")
+        # 4. Fallback Keyword Matched Lines for Specific Queries
+        matched = [l for l in clean_lines if keywords and any(kw in l.lower() for kw in keywords)]
+        if matched:
+            res = [f"### Findings for **\"{question}\"**\n"]
+            for m in matched[:5]:
+                res.append(f"• {m.lstrip('-').replace('|', ' — ').strip()}")
+            return "\n".join(res)
 
-        return "\n".join(paragraphs)
+        # Default fallback if no keyword match
+        res = [f"### Case Summary Findings\n"]
+        res.append("Here are the key recorded findings from the evidence file:\n")
+        for cl in clean_lines[:5]:
+            res.append(f"• {cl.lstrip('-').replace('|', ' — ').strip()}")
+        return "\n".join(res)
 
     def generate_structured(self, prompt: str, system_prompt: str = None, temperature: float = 0.1) -> dict:
         """Generate structured JSON output from LLM."""
