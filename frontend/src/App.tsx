@@ -1877,7 +1877,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
             onMouseLeave={handleEnd}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+            onTouchEnd={handleEnd}
             onWheel={handleWheel}
           >
             {/* Control Floating Toolbar */}
