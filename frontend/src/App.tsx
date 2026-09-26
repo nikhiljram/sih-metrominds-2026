@@ -1536,6 +1536,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
   const [graphData, setGraphData] = useState<any>({ nodes: [], edges: [] });
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [selectedEdge, setSelectedEdge] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   // 3D & Gesture Interaction States
@@ -1543,6 +1544,9 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
   const [rotY, setRotY] = useState<number>(0.4);
   const [zoom, setZoom] = useState<number>(1.0);
   const [autoRotate, setAutoRotate] = useState<boolean>(true);
+
+  // Computed 3D force layout positions: id -> {x, y, z}
+  const [nodePositions3D, setNodePositions3D] = useState<{ [key: string]: { x: number; y: number; z: number } }>({});
 
   // Drag & Touch tracking refs
   const isDragging = useRef<boolean>(false);
@@ -1558,11 +1562,117 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
 
     api.get(url)
       .then(res => {
-        setGraphData(res.data || { nodes: [], edges: [] });
+        const data = res.data || { nodes: [], edges: [] };
+        setGraphData(data);
+        compute3DForceLayout(data.nodes || [], data.edges || []);
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [caseId, selectedCategory]);
+
+  // AI-Assisted 3D Force-Directed Physics Simulation
+  // Distance between nodes is inversely proportional to relation score (stronger relation = closer distance)
+  const compute3DForceLayout = (rawNodes: any[], rawEdges: any[]) => {
+    const validNodes = rawNodes.filter((n: any) => n.label && n.label.trim().length >= 2);
+    if (validNodes.length === 0) return;
+
+    const numNodes = validNodes.length;
+    const pos: { [key: string]: { x: number; y: number; z: number; vx: number; vy: number; vz: number } } = {};
+
+    // Initial 3D Fibonacci distribution seed
+    const phi = Math.PI * (3 - Math.sqrt(5));
+    const initRadius = 140;
+
+    validNodes.forEach((n: any, idx: number) => {
+      const y = 1 - (idx / Math.max(numNodes - 1, 1)) * 2;
+      const radiusAtY = Math.sqrt(Math.max(0, 1 - y * y));
+      const theta = phi * idx;
+
+      pos[n.id] = {
+        x: Math.cos(theta) * radiusAtY * initRadius,
+        y: y * initRadius,
+        z: Math.sin(theta) * radiusAtY * initRadius,
+        vx: 0, vy: 0, vz: 0
+      };
+    });
+
+    // Build edge lookup table for relation scores
+    const edgeMap: { [key: string]: number } = {};
+    rawEdges.forEach((e: any) => {
+      const score = Number(e.weight || e.relation_score || e.confidence || 1.0);
+      edgeMap[`${e.source}_${e.target}`] = score;
+      edgeMap[`${e.target}_${e.source}`] = score;
+    });
+
+    // Run 80 iterations of 3D force simulation
+    const iterations = 80;
+    const damping = 0.85;
+
+    for (let iter = 0; iter < iterations; iter++) {
+      // Repulsion force between all node pairs
+      for (let i = 0; i < validNodes.length; i++) {
+        for (let j = i + 1; j < validNodes.length; j++) {
+          const idA = validNodes[i].id;
+          const idB = validNodes[j].id;
+          const pA = pos[idA];
+          const pB = pos[idB];
+          if (!pA || !pB) continue;
+
+          let dx = pB.x - pA.x;
+          let dy = pB.y - pA.y;
+          let dz = pB.z - pA.z;
+          let dist = Math.sqrt(dx * dx + dy * dy + dz * dz) + 0.1;
+
+          // Coulomb repulsion
+          const repForce = 4500 / (dist * dist);
+          const fx = (dx / dist) * repForce;
+          const fy = (dy / dist) * repForce;
+          const fz = (dz / dist) * repForce;
+
+          pA.vx -= fx; pA.vy -= fy; pA.vz -= fz;
+          pB.vx += fx; pB.vy += fy; pB.vz += fz;
+        }
+      }
+
+      // Attraction force along edges based on relation score
+      rawEdges.forEach((e: any) => {
+        const pA = pos[e.source];
+        const pB = pos[e.target];
+        if (!pA || !pB) return;
+
+        let dx = pB.x - pA.x;
+        let dy = pB.y - pA.y;
+        let dz = pB.z - pA.z;
+        let dist = Math.sqrt(dx * dx + dy * dy + dz * dz) + 0.1;
+
+        // Relation score scaling: higher score = shorter target distance & stronger pull
+        const score = Number(e.weight || e.relation_score || e.confidence || 1.0);
+        const targetDist = Math.max(30, 160 / Math.max(score, 0.2));
+        const attForce = (dist - targetDist) * 0.04 * Math.min(score, 2.5);
+
+        const fx = (dx / dist) * attForce;
+        const fy = (dy / dist) * attForce;
+        const fz = (dz / dist) * attForce;
+
+        pA.vx += fx; pA.vy += fy; pA.vz += fz;
+        pB.vx -= fx; pB.vy -= fy; pB.vz -= fz;
+      });
+
+      // Update positions with damping
+      validNodes.forEach((n: any) => {
+        const p = pos[n.id];
+        if (!p) return;
+        p.x += p.vx; p.y += p.vy; p.z += p.vz;
+        p.vx *= damping; p.vy *= damping; p.vz *= damping;
+      });
+    }
+
+    const finalPos: { [key: string]: { x: number; y: number; z: number } } = {};
+    validNodes.forEach((n: any) => {
+      finalPos[n.id] = { x: pos[n.id].x, y: pos[n.id].y, z: pos[n.id].z };
+    });
+    setNodePositions3D(finalPos);
+  };
 
   // Auto rotation frame loop
   useEffect(() => {
@@ -1583,7 +1693,6 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
   const height = 480;
   const centerX = width / 2;
   const centerY = height / 2;
-  const radius = 180;
 
   const getNodeColor = (typeStr: string) => {
     const t = (typeStr || '').toUpperCase();
@@ -1597,30 +1706,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
     return '#64748b';
   };
 
-  // 1. Assign 3D Spherical Coordinates (x, y, z) using Fibonacci Sphere distribution
-  const raw3DNodes: { [key: string]: { x: number; y: number; z: number; label: string; type: string; raw: any } } = {};
-  const numNodes = Math.max(nodes.length, 1);
-  const phi = Math.PI * (3 - Math.sqrt(5)); // Golden angle in radians
-
-  nodes.forEach((n: any, idx: number) => {
-    const y = 1 - (idx / Math.max(numNodes - 1, 1)) * 2; // y goes from 1 to -1
-    const radiusAtY = Math.sqrt(Math.max(0, 1 - y * y)); // radius at y
-    const theta = phi * idx; // golden angle increment
-
-    const x = Math.cos(theta) * radiusAtY;
-    const z = Math.sin(theta) * radiusAtY;
-
-    raw3DNodes[n.id] = {
-      x: x * radius,
-      y: y * radius,
-      z: z * radius,
-      label: n.label || `Node ${n.id}`,
-      type: n.type || 'ENTITY',
-      raw: n
-    };
-  });
-
-  // 2. Apply 3D Rotation Matrix & Perspective Projection
+  // 3D Rotation Matrix & Perspective Projection
   const projectedNodes: { [key: string]: { id: string; projX: number; projY: number; scale: number; zDepth: number; label: string; type: string; raw: any } } = {};
 
   const cosY = Math.cos(rotY);
@@ -1630,16 +1716,15 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
   const fov = 450 * zoom;
 
   nodes.forEach((n: any) => {
-    const raw3D = raw3DNodes[n.id];
-    if (!raw3D) return;
+    const p3d = nodePositions3D[n.id] || { x: 0, y: 0, z: 0 };
 
     // Rotate around Y axis
-    const x1 = raw3D.x * cosY + raw3D.z * sinY;
-    const z1 = -raw3D.x * sinY + raw3D.z * cosY;
+    const x1 = p3d.x * cosY + p3d.z * sinY;
+    const z1 = -p3d.x * sinY + p3d.z * cosY;
 
     // Rotate around X axis
-    const y2 = raw3D.y * cosX - z1 * sinX;
-    const z2 = raw3D.y * sinX + z1 * cosX;
+    const y2 = p3d.y * cosX - z1 * sinX;
+    const z2 = p3d.y * sinX + z1 * cosX;
 
     // Perspective scale calculation
     const cameraDist = 400;
@@ -1650,14 +1735,14 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
       projX: centerX + x1 * scale,
       projY: centerY + y2 * scale,
       scale,
-      zDepth: z2, // higher zDepth = farther away
-      label: raw3D.label,
-      type: raw3D.type,
+      zDepth: z2,
+      label: n.label || `Node ${n.id}`,
+      type: n.type || 'ENTITY',
       raw: n
     };
   });
 
-  // 3. Depth Sorting: Sort nodes from farthest to nearest so front nodes render on top
+  // Depth Sorting: Sort nodes from farthest to nearest so front nodes render on top
   const sortedNodeList = Object.values(projectedNodes).sort((a, b) => b.zDepth - a.zDepth);
 
   // Mouse & Touch Gesture Handlers
@@ -1719,26 +1804,31 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
 
   const categories = ['ALL', 'PERSON', 'ORGANIZATION', 'LOCATION', 'BANK_ACCOUNT', 'PHONE', 'VEHICLE', 'OBJECT'];
 
+  // Helper to find connected relations for selected node
+  const connectedEdgesForSelectedNode = selectedNode
+    ? edges.filter((e: any) => e.source === selectedNode.id || e.target === selectedNode.id)
+    : [];
+
   return (
     <div className="card" style={{ padding: '24px', minHeight: '520px' }}>
       {/* Header Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 750, color: '#172033', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>3D Interactive Link & Entity Intelligence Graph</span>
+            <span>3D Relation-Clustered Entity Intelligence Graph</span>
             <span style={{ fontSize: '11px', background: '#3b82f6', color: '#fff', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-              TOUCH 3D
+              AI FORCE 3D
             </span>
           </h2>
           <p style={{ fontSize: '13px', color: '#5b6577', margin: '4px 0 0' }}>
-            Showing {nodes.length} filtered intelligence nodes & {edges.length} extracted 3D relationships.
+            Node distances optimized by AI relation scores (closer = stronger relationship). Click node or link for summary.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           {categories.map(cat => (
             <button
               key={cat}
-              onClick={() => setSelectedCategory(cat)}
+              onClick={() => { setSelectedCategory(cat); setSelectedNode(null); setSelectedEdge(null); }}
               className={`type-pill ${selectedCategory === cat ? 'selected' : ''}`}
               style={{
                 cursor: 'pointer',
@@ -1759,7 +1849,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
 
       {loading ? (
         <div style={{ background: '#0f172a', borderRadius: '12px', height: '420px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-          Initializing 3D Intelligence Matrix...
+          Initializing 3D Relation-Scored Graph...
         </div>
       ) : nodes.length === 0 ? (
         <div style={{ background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: '10px', height: '360px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
@@ -1768,7 +1858,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
           <span style={{ fontSize: '12px', color: '#94a3b8' }}>Upload evidence files under the 'Documents' tab to auto-extract entities and link analysis.</span>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: selectedNode ? '1fr 300px' : '1fr', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: (selectedNode || selectedEdge) ? '1fr 320px' : '1fr', gap: '16px' }}>
           {/* 3D Touch-Responsive Graph Viewport */}
           <div
             style={{
@@ -1787,7 +1877,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
             onMouseLeave={handleEnd}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
-            onTouchEnd={handleEnd}
+            onTouchEnd={handleTouchEnd}
             onWheel={handleWheel}
           >
             {/* Control Floating Toolbar */}
@@ -1814,9 +1904,9 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
                 {autoRotate ? 'Auto 3D 🔄' : 'Paused ⏸'}
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); setRotX(0.2); setRotY(0.4); setZoom(1.0); }}
+                onClick={(e) => { e.stopPropagation(); setRotX(0.2); setRotY(0.4); setZoom(1.0); compute3DForceLayout(nodes, edges); }}
                 style={{ background: '#334155', color: '#94a3b8', border: 0, padding: '0 8px', height: '28px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}
-                title="Reset View"
+                title="Reset View & Physics"
               >
                 Reset
               </button>
@@ -1824,7 +1914,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
 
             {/* Gesture Guide Hint */}
             <div style={{ position: 'absolute', bottom: '16px', left: '16px', zIndex: 10, background: 'rgba(15, 23, 42, 0.75)', color: '#94a3b8', fontSize: '11px', padding: '4px 10px', borderRadius: '6px', pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.08)' }}>
-              📱 Drag/Touch to rotate 3D • Pinch/Scroll to zoom • Tap node to inspect
+              📱 Drag/Touch to rotate • Pinch/Scroll zoom • Tap node or relation line to view details & summary
             </div>
 
             <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
@@ -1841,71 +1931,73 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
                 const tgt = projectedNodes[edge.target];
                 if (!src || !tgt) return null;
 
-                const isHighlighted = selectedNode && (selectedNode.id === edge.source || selectedNode.id === edge.target);
+                const isEdgeSelected = selectedEdge && (
+                  (selectedEdge.source === edge.source && selectedEdge.target === edge.target) ||
+                  (selectedEdge.source === edge.target && selectedEdge.target === edge.source)
+                );
+                const isNodeHighlighted = selectedNode && (selectedNode.id === edge.source || selectedNode.id === edge.target);
+                const isHighlighted = isEdgeSelected || isNodeHighlighted;
+
                 const avgZ = (src.zDepth + tgt.zDepth) / 2;
-                const edgeOpacity = Math.max(0.15, Math.min(0.9, (250 - avgZ) / 350));
+                const edgeOpacity = isHighlighted ? 1.0 : Math.max(0.15, Math.min(0.85, (250 - avgZ) / 350));
                 const midX = (src.projX + tgt.projX) / 2;
                 const midY = (src.projY + tgt.projY) / 2;
+                const relScore = edge.weight || edge.relation_score || 1.0;
 
                 return (
-                  <g key={`edge-${idx}`} style={{ opacity: edgeOpacity }}>
+                  <g
+                    key={`edge-${idx}`}
+                    style={{ opacity: edgeOpacity, cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!hasMoved.current) {
+                        setSelectedEdge(isEdgeSelected ? null : edge);
+                        setSelectedNode(null);
+                      }
+                    }}
+                  >
+                    {/* Invisible thick line for easy touch selection */}
+                    <line
+                      x1={src.projX}
+                      y1={src.projY}
+                      x2={tgt.projX}
+                      y2={tgt.projY}
+                      stroke="transparent"
+                      strokeWidth={14}
+                    />
                     <line
                       x1={src.projX}
                       y1={src.projY}
                       x2={tgt.projX}
                       y2={tgt.projY}
                       stroke={isHighlighted ? '#38bdf8' : '#475569'}
-                      strokeWidth={isHighlighted ? 3 * Math.min(src.scale, tgt.scale) : 1.5 * Math.min(src.scale, tgt.scale)}
+                      strokeWidth={isHighlighted ? 3.5 * Math.min(src.scale, tgt.scale) : Math.max(1, relScore * 1.5) * Math.min(src.scale, tgt.scale)}
                       strokeDasharray={isHighlighted ? '0' : '4 3'}
                     />
-                    {isHighlighted && (
-                      <g>
-                        <rect
-                          x={midX - 35}
-                          y={midY - 10}
-                          width="70"
-                          height="18"
-                          rx="4"
-                          fill="#0f172a"
-                          stroke="#38bdf8"
-                          strokeWidth="1"
-                        />
-                        <text
-                          x={midX}
-                          y={midY + 3}
-                          fill="#38bdf8"
-                          fontSize="9"
-                          fontWeight="700"
-                          textAnchor="middle"
-                        >
-                          {edge.type || edge.label || 'LINKED'}
-                        </text>
-                      </g>
-                    )}
+                    {/* Relation Tag on Edge */}
+                    <g transform={`translate(${midX}, ${midY})`}>
+                      <rect
+                        x="-38"
+                        y="-10"
+                        width="76"
+                        height="18"
+                        rx="4"
+                        fill={isEdgeSelected ? '#38bdf8' : '#0f172a'}
+                        stroke={isHighlighted ? '#38bdf8' : '#334155'}
+                        strokeWidth="1"
+                      />
+                      <text
+                        x="0"
+                        y="3"
+                        fill={isEdgeSelected ? '#0f172a' : '#38bdf8'}
+                        fontSize="9"
+                        fontWeight="750"
+                        textAnchor="middle"
+                      >
+                        {(edge.type || edge.label || 'LINK').slice(0, 10)}
+                      </text>
+                    </g>
                   </g>
-                );
-              })}
-
-              {/* Fallback 3D Ring Edges if no edges exist */}
-              {edges.length === 0 && nodes.map((n: any, idx: number) => {
-                const nextIdx = (idx + 1) % nodes.length;
-                const src = projectedNodes[n.id];
-                const tgt = projectedNodes[nodes[nextIdx].id];
-                if (!src || !tgt) return null;
-                const avgZ = (src.zDepth + tgt.zDepth) / 2;
-                const edgeOpacity = Math.max(0.1, Math.min(0.6, (250 - avgZ) / 350));
-                return (
-                  <line
-                    key={`fallback-edge-${idx}`}
-                    x1={src.projX}
-                    y1={src.projY}
-                    x2={tgt.projX}
-                    y2={tgt.projY}
-                    stroke="#334155"
-                    strokeWidth={1.2 * Math.min(src.scale, tgt.scale)}
-                    strokeDasharray="4 4"
-                    opacity={edgeOpacity}
-                  />
                 );
               })}
 
@@ -1923,6 +2015,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
                       e.stopPropagation();
                       if (!hasMoved.current) {
                         setSelectedNode(isSelected ? null : pos.raw);
+                        setSelectedEdge(null);
                       }
                     }}
                     style={{ cursor: 'pointer', opacity }}
@@ -1980,9 +2073,9 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
             </svg>
           </div>
 
-          {/* Node Inspector Side Panel */}
+          {/* Node & Edge Inspector Side Panel */}
           {selectedNode && (
-            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '480px', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <b style={{ fontSize: '14px', color: '#172033' }}>Entity Intelligence Inspector</b>
                 <button onClick={() => setSelectedNode(null)} style={{ border: 0, background: 'none', color: '#64748b', cursor: 'pointer', fontSize: '16px' }}>✕</button>
@@ -1990,9 +2083,9 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
 
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}>
                 <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 650 }}>ENTITY NAME</div>
-                <div style={{ fontSize: '14px', fontWeight: 750, color: '#1e293b', marginTop: '2px' }}>{selectedNode.label}</div>
+                <div style={{ fontSize: '15px', fontWeight: 750, color: '#1e293b', marginTop: '2px' }}>{selectedNode.label}</div>
 
-                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
                   <span className="type-pill" style={{ background: getNodeColor(selectedNode.type), color: '#fff' }}>
                     {selectedNode.type}
                   </span>
@@ -2000,6 +2093,41 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
                     {selectedNode.mention_count || 1} Mentions
                   </span>
                 </div>
+              </div>
+
+              {/* Connected Relationships & AI Summaries */}
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#1e293b', marginBottom: '8px' }}>
+                  CONNECTED RELATIONSHIPS ({connectedEdgesForSelectedNode.length})
+                </div>
+                {connectedEdgesForSelectedNode.length === 0 ? (
+                  <div style={{ fontSize: '12px', color: '#94a3b8' }}>No direct connections found in case graph.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {connectedEdgesForSelectedNode.map((rel: any, idx: number) => {
+                      const otherId = rel.source === selectedNode.id ? rel.target : rel.source;
+                      const otherNode = nodes.find((n: any) => n.id === otherId);
+                      const relScore = rel.weight || rel.relation_score || 1.0;
+
+                      return (
+                        <div key={idx} style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px 10px', fontSize: '12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#1e293b' }}>
+                            <span>{rel.type || rel.label || 'CONNECTED'}</span>
+                            <span style={{ color: '#2563eb', fontSize: '11px' }}>Score: {relScore}</span>
+                          </div>
+                          <div style={{ color: '#475569', marginTop: '2px' }}>
+                            Target: <b>{otherNode ? otherNode.label : otherId}</b>
+                          </div>
+                          {rel.details && (
+                            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', fontStyle: 'italic' }}>
+                              "{rel.details}"
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {selectedNode.metadata && (
@@ -2011,6 +2139,57 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Edge / Link Inspector Side Panel */}
+          {selectedEdge && !selectedNode && (
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '480px', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <b style={{ fontSize: '14px', color: '#172033' }}>Relationship Link Inspector</b>
+                <button onClick={() => setSelectedEdge(null)} style={{ border: 0, background: 'none', color: '#64748b', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+              </div>
+
+              <div style={{ background: '#fff', border: '1px solid #38bdf8', borderRadius: '8px', padding: '12px' }}>
+                <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: 700 }}>RELATIONSHIP TYPE</div>
+                <div style={{ fontSize: '15px', fontWeight: 800, color: '#0f172a', marginTop: '2px' }}>
+                  {selectedEdge.type || selectedEdge.label || 'LINKED RELATIONSHIP'}
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <span className="type-pill" style={{ background: '#0284c7', color: '#fff' }}>
+                    Relation Score: {selectedEdge.weight || selectedEdge.relation_score || 1.0}
+                  </span>
+                </div>
+              </div>
+
+              {/* Source <-> Target Details */}
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div>
+                  <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 700 }}>SOURCE ENTITY</div>
+                  <div style={{ fontSize: '13px', fontWeight: 750, color: '#1e293b' }}>
+                    {nodes.find((n: any) => n.id === selectedEdge.source)?.label || selectedEdge.source}
+                  </div>
+                </div>
+                <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '6px' }}>
+                  <div style={{ fontSize: '10px', color: '#64748b', fontWeight: 700 }}>TARGET ENTITY</div>
+                  <div style={{ fontSize: '13px', fontWeight: 750, color: '#1e293b' }}>
+                    {nodes.find((n: any) => n.id === selectedEdge.target)?.label || selectedEdge.target}
+                  </div>
+                </div>
+              </div>
+
+              {/* Relationship Summary */}
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#1e293b', marginBottom: '6px' }}>
+                  RELATIONSHIP SUMMARY & EVIDENCE
+                </div>
+                <div style={{ fontSize: '12px', color: '#334155', lineHeight: '1.5' }}>
+                  {selectedEdge.details || selectedEdge.summary || (
+                    `Connection identified between ${nodes.find((n: any) => n.id === selectedEdge.source)?.label || selectedEdge.source} and ${nodes.find((n: any) => n.id === selectedEdge.target)?.label || selectedEdge.target} with relationship type '${selectedEdge.type || 'LINKED'}'.`
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>
