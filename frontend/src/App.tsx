@@ -1715,16 +1715,26 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
   const centerX = width / 2;
   const centerY = height / 2;
 
-  const getNodeColor = (typeStr: string) => {
-    const t = (typeStr || '').toUpperCase();
-    if (t.includes('PERSON') || t.includes('SUSPECT')) return '#3b82f6';
-    if (t.includes('ORGANIZATION') || t.includes('COMPANY')) return '#a855f7';
-    if (t.includes('BANK') || t.includes('ACCOUNT')) return '#10b981';
-    if (t.includes('LOCATION') || t.includes('ADDRESS')) return '#f59e0b';
-    if (t.includes('PHONE') || t.includes('CALL')) return '#ec4899';
-    if (t.includes('VEHICLE')) return '#06b6d4';
-    if (t.includes('WEAPON') || t.includes('DRUG')) return '#ef4444';
-    return '#64748b';
+  // Calculate node degree (connections count) to identify central Hub Nodes
+  const nodeDegrees: { [key: string]: number } = {};
+  edges.forEach((e: any) => {
+    nodeDegrees[e.source] = (nodeDegrees[e.source] || 0) + 1;
+    nodeDegrees[e.target] = (nodeDegrees[e.target] || 0) + 1;
+  });
+
+  const getNeuralClusterColor = (node: any) => {
+    const cid = node.cluster_id ?? 0;
+    const deg = nodeDegrees[node.id] || 0;
+    const isHub = deg >= 3;
+
+    // Palette matching user reference image: Magenta Cluster vs Green Cluster
+    if (cid % 2 === 0) {
+      // Magenta / Purple Cluster
+      return isHub ? '#4b1357' : (deg > 1 ? '#be24d6' : '#e056fd');
+    } else {
+      // Light Green / Emerald Cluster
+      return isHub ? '#0d4722' : (deg > 1 ? '#2ed573' : '#90ef8f');
+    }
   };
 
   // 3D Rotation Matrix & Perspective Projection
@@ -2025,8 +2035,10 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
               {/* Render Depth-Sorted 3D Nodes */}
               {sortedNodeList.map((pos) => {
                 const isSelected = selectedNode && selectedNode.id === pos.id;
-                const color = getNodeColor(pos.type);
-                const nodeRadius = (isSelected ? 26 : 20) * pos.scale;
+                const color = getNeuralClusterColor(pos.raw);
+                const deg = nodeDegrees[pos.id] || 0;
+                const isHub = deg >= 3;
+                const nodeRadius = (isSelected ? 26 : (isHub ? 22 : 18)) * pos.scale;
                 const opacity = Math.max(0.35, Math.min(1.0, (300 - pos.zDepth) / 350));
 
                 return (

@@ -42,6 +42,7 @@ class GraphNode(BaseModel):
     label: str
     type: str
     mention_count: int = 1
+    cluster_id: int = 0
     metadata: Optional[dict] = None
 
 
@@ -52,6 +53,7 @@ class GraphEdge(BaseModel):
     label: Optional[str] = None
     confidence: float = 1.0
     evidence_count: int = 1
+    weight: float = 1.0
 
 
 class GraphResponse(BaseModel):
