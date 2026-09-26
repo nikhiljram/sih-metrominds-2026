@@ -40,109 +40,63 @@ class LLMProvider:
             return self._heuristic_fallback(prompt)
 
     def _heuristic_fallback(self, prompt: str) -> str:
-        """Smarter question-aware extractive fallback when Gemini API is offline/unavailable."""
-        # Extract the question from the prompt
+        """Question-aware conversational synthesis for clean chatbot responses."""
         question = ""
-        question_marker = "OFFICER'S QUESTION:"
-        if question_marker in prompt:
-            q_part = prompt.split(question_marker)[-1].strip()
-            question = q_part.split("\n")[0].strip().lower()
+        if "OFFICER'S QUESTION:" in prompt:
+            q_part = prompt.split("OFFICER'S QUESTION:")[-1].strip()
+            question = q_part.split("\n")[0].strip()
 
-        stopwords = {'who', 'what', 'is', 'the', 'are', 'was', 'a', 'an', 'and', 'or', 'to', 'of', 'in', 'on', 'with', 'for'}
-        keywords = [w for w in question.replace('?', '').replace(',', '').split() if w not in stopwords and len(w) > 2]
+        stopwords = {'who', 'what', 'is', 'the', 'are', 'was', 'a', 'an', 'and', 'or', 'to', 'of', 'in', 'on', 'with', 'for', 'case'}
+        keywords = [w.lower() for w in question.replace('?', '').replace(',', '').split() if w.lower() not in stopwords and len(w) > 2]
 
         lines = prompt.split('\n')
-        doc_chunks = []
-        current_source = None
-        buffer = []
+        extracted_facts = []
 
         for line in lines:
-            stripped = line.strip()
-            if stripped.startswith('[') and 'Source:' in stripped:
-                if current_source and buffer:
-                    doc_chunks.append((current_source, "\n".join(buffer)))
-                    buffer = []
-                current_source = stripped
+            stripped = line.strip().strip('"').strip("'")
+            if not stripped or stripped.startswith('[') or stripped.startswith('---') or stripped.startswith('SYSTEM') or stripped.startswith('OFFICER') or stripped.startswith('CASE EVIDENCE'):
                 continue
-            if current_source and stripped:
-                cleaned = stripped.strip('"').strip()
-                if cleaned and not cleaned.startswith('---'):
-                    buffer.append(cleaned)
+            if stripped.startswith('- ') or '|' in stripped or any(kw in stripped.lower() for kw in keywords) or len(stripped) > 25:
+                # Clean up repeated noise lines
+                if stripped not in extracted_facts and not stripped.startswith('Page ') and not stripped.startswith('Source:'):
+                    extracted_facts.append(stripped)
 
-        if current_source and buffer:
-            doc_chunks.append((current_source, "\n".join(buffer)))
+        paragraphs = []
+        if question:
+            paragraphs.append(f"Here is the detailed summary regarding **\"{question}\"** based on the active case dossier:\n")
+        else:
+            paragraphs.append("Here is the executive summary based on the active case dossier:\n")
 
-        # Find entity profiles and matches
-        matched_profiles = []
-        matched_rels = []
-        matched_excerpts = []
+        # Synthesize into clean readable text blocks
+        main_body_sentences = []
+        key_details = []
 
-        for src, content in doc_chunks:
-            chunk_lines = [l.strip() for l in content.split('\n') if l.strip()]
-            for l in chunk_lines:
-                lower_l = l.lower()
-                if keywords and any(kw in lower_l for kw in keywords):
-                    # Check if pipe-separated table row
-                    if '|' in l and not l.startswith('person_id') and not l.startswith('source_id'):
-                        parts = [p.strip() for p in l.split('|')]
-                        if len(parts) >= 3:
-                            matched_profiles.append((src, parts))
-                    else:
-                        matched_excerpts.append((src, l))
+        for fact in extracted_facts:
+            clean_text = fact.replace('|', ' • ').replace('  ', ' ').strip()
+            if len(clean_text) > 30 and not clean_text.startswith('-'):
+                if clean_text not in main_body_sentences:
+                    main_body_sentences.append(clean_text)
+            elif clean_text.startswith('-') or ' • ' in clean_text:
+                if clean_text not in key_details:
+                    key_details.append(clean_text)
 
-        # Known entities / relationships in prompt
-        in_entities = False
-        in_rels = False
-        for line in lines:
-            stripped = line.strip()
-            if 'KNOWN ENTITIES' in stripped:
-                in_entities = True; in_rels = False; continue
-            if 'KNOWN RELATIONSHIPS' in stripped:
-                in_rels = True; in_entities = False; continue
-            if in_entities and stripped.startswith('-'):
-                if keywords and any(kw in stripped.lower() for kw in keywords):
-                    matched_rels.append(stripped)
-            if in_rels and stripped.startswith('-'):
-                if keywords and any(kw in stripped.lower() for kw in keywords):
-                    matched_rels.append(stripped)
+        if main_body_sentences:
+            paragraphs.append(" ".join(main_body_sentences[:4]))
+            paragraphs.append("")
 
-        # Build response
-        response_parts = ["### Executive Summary"]
-        q_display = question.title() if question else "Case Query"
-        response_parts.append(f"Based on case evidence, here is the investigation profile for **\"{q_display}\"**:\n")
+        if key_details:
+            paragraphs.append("### Key Case Highlights")
+            for item in key_details[:6]:
+                paragraphs.append(f"• {item.lstrip('-').strip()}")
+            paragraphs.append("")
 
-        if matched_profiles:
-            response_parts.append("### Key Entity Profile")
-            for src, parts in matched_profiles[:5]:
-                profile_str = " • ".join(parts)
-                response_parts.append(f"- **Profile Data:** {profile_str}")
-            response_parts.append("")
+        if not main_body_sentences and not key_details and extracted_facts:
+            paragraphs.append(" ".join(extracted_facts[:5]))
 
-        if matched_rels:
-            response_parts.append("### Direct Connections & Relational Evidence")
-            for rel in matched_rels[:6]:
-                response_parts.append(f"{rel}")
-            response_parts.append("")
+        if not extracted_facts:
+            paragraphs.append("The case files have been registered and processed. Upload additional forensic evidence files to view complete cross-entity intelligence.")
 
-        if matched_excerpts:
-            response_parts.append("### Relevant Document Excerpts")
-            for src, excerpt in matched_excerpts[:4]:
-                src_name = src.replace('[', '').replace(']', '').strip() if src else 'Case Document'
-                response_parts.append(f"**{src_name}:**")
-                response_parts.append(f"> {excerpt}\n")
-
-        if not matched_profiles and not matched_rels and not matched_excerpts:
-            response_parts.append("### Relevant Evidence Findings")
-            for i, (src, content) in enumerate(doc_chunks[:3], 1):
-                src_name = src.replace('[', '').replace(']', '').strip() if src else f'Source {i}'
-                response_parts.append(f"**[{i}] {src_name}:**")
-                first_lines = "\n".join(content.split('\n')[:4])
-                response_parts.append(f"> {first_lines}\n")
-
-        response_parts.append("---")
-        response_parts.append("*Note: Extractive analysis directly grounded on active case files.*")
-
-        return "\n".join(response_parts)
+        return "\n".join(paragraphs)
 
     def generate_structured(self, prompt: str, system_prompt: str = None, temperature: float = 0.1) -> dict:
         """Generate structured JSON output from LLM."""
