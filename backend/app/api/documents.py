@@ -201,6 +201,74 @@ def view_document_file(
 
 
 
+PROCESSING_STAGES = [
+    {"key": "PENDING",            "label": "Queued",                "percent": 5},
+    {"key": "EXTRACTING",         "label": "Extracting Text",       "percent": 20},
+    {"key": "CHUNKING",           "label": "Chunking Document",     "percent": 40},
+    {"key": "EMBEDDING",          "label": "Generating Embeddings", "percent": 55},
+    {"key": "ENTITY_EXTRACTING",  "label": "Extracting Entities",   "percent": 75},
+    {"key": "RELATIONSHIP_EXTRACTING", "label": "Mapping Relationships", "percent": 90},
+    {"key": "COMPLETED",          "label": "Completed",             "percent": 100},
+    {"key": "FAILED",             "label": "Failed",                "percent": 0},
+]
+
+STAGE_ORDER = {s["key"]: i for i, s in enumerate(PROCESSING_STAGES)}
+
+
+@router.get("/{document_id}/status")
+def get_document_processing_status(
+    case_id: int,
+    document_id: int,
+    db: Session = Depends(get_db),
+):
+    """Poll the current processing status and progress of a document."""
+    doc = db.query(Document).filter(Document.id == document_id, Document.case_id == case_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    current_status = doc.processing_status or "PENDING"
+    current_idx = STAGE_ORDER.get(current_status, 0)
+
+    # Build stages array with done/active/pending state
+    stages = []
+    for stage in PROCESSING_STAGES:
+        if stage["key"] == "FAILED":
+            continue
+        idx = STAGE_ORDER[stage["key"]]
+        if current_status == "FAILED":
+            state = "failed"
+        elif idx < current_idx:
+            state = "done"
+        elif idx == current_idx:
+            state = "active"
+        else:
+            state = "pending"
+        stages.append({
+            "key": stage["key"],
+            "label": stage["label"],
+            "percent": stage["percent"],
+            "state": state,
+        })
+
+    # Overall progress
+    matched = next((s for s in PROCESSING_STAGES if s["key"] == current_status), PROCESSING_STAGES[0])
+    overall_percent = matched["percent"]
+    is_complete = current_status == "COMPLETED"
+    is_failed = current_status == "FAILED"
+
+    return {
+        "document_id": doc.id,
+        "status": current_status,
+        "percent": overall_percent,
+        "is_complete": is_complete,
+        "is_failed": is_failed,
+        "error": doc.processing_error if is_failed else None,
+        "stages": stages,
+        "total_chunks": doc.total_chunks or 0,
+        "total_pages": doc.total_pages or 0,
+    }
+
+
 @router.delete("/{document_id}", status_code=204)
 def delete_document(
     case_id: int,

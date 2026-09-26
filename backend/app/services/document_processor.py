@@ -99,9 +99,9 @@ class DocumentProcessor:
                 )
                 all_entities.extend(entities)
 
-            # Step 5: Relationship extraction
+            # Step 5: Relationship extraction & Timeline Events
+            self._update_status(doc, "RELATIONSHIP_EXTRACTING")
             for db_chunk in db_chunks:
-                # Get entities found in this chunk
                 chunk_entities = [
                     e for e in all_entities
                     if e.case_id == doc.case_id
@@ -114,6 +114,28 @@ class DocumentProcessor:
                         chunk_id=db_chunk.id,
                         entities=chunk_entities,
                     )
+
+            # Generate automatic Timeline Event for Evidence Ingestion
+            from app.models.event import Event
+            event_title = f"Evidence Uploaded: {doc.original_name or 'Document'}"
+            event_desc = f"Extracted {len(all_entities)} entities across {len(db_chunks)} chunks from {doc.original_name or 'Uploaded File'}."
+            existing_event = self.db.query(Event).filter(
+                Event.case_id == doc.case_id,
+                Event.source_document_id == doc.id
+            ).first()
+
+            if not existing_event:
+                new_event = Event(
+                    case_id=doc.case_id,
+                    title=event_title,
+                    description=event_desc,
+                    event_type="EVIDENCE_COLLECTED",
+                    source_document_id=doc.id,
+                    is_ai_generated=True,
+                    confidence=0.95
+                )
+                self.db.add(new_event)
+                self.db.commit()
 
             # Done
             doc.processing_status = "COMPLETED"

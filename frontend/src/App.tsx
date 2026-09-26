@@ -943,25 +943,55 @@ function CaseEvidenceSubView({ caseId }: { caseId: string }) {
   );
 }
 
-function CaseTimelineSubView({ caseData }: { caseData?: any }) {
+function CaseTimelineSubView({ caseId }: { caseId: string }) {
+  const [events, setEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get(`/cases/${caseId}/timeline`)
+      .then(res => setEvents(res.data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [caseId]);
+
   return (
     <div className="card" style={{ padding: '24px' }}>
       <h2 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 750, color: '#172033' }}>Chronological Investigation Timeline</h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', borderLeft: '2px solid #e2e8f0', paddingLeft: '20px', marginLeft: '10px' }}>
-        <div>
-          <span style={{ fontSize: '11px', fontWeight: 700, color: '#2563eb' }}>{caseData?.created_at ? caseData.created_at.slice(0, 10) : 'TODAY'}</span>
-          <h4 style={{ margin: '4px 0 2px', fontSize: '14px', color: '#172033' }}>Case File Registered</h4>
-          <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Formal FIR case file registered in system by {caseData?.creator_name || 'Assigned Officer'}.</p>
+      {loading ? (
+        <div style={{ padding: '24px', color: '#64748b' }}>Loading timeline events...</div>
+      ) : events.length === 0 ? (
+        <div style={{ padding: '24px', color: '#64748b' }}>No timeline events recorded yet. Upload documents to generate chronological evidence log.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', borderLeft: '2px solid #3b82f6', paddingLeft: '20px', marginLeft: '10px' }}>
+          {events.map((ev: any, idx: number) => (
+            <div key={idx} style={{ position: 'relative' }}>
+              <div style={{ position: 'absolute', left: '-27px', top: '2px', width: '12px', height: '12px', borderRadius: '50%', background: '#3b82f6', border: '2px solid #fff' }} />
+              <span style={{ fontSize: '11px', fontWeight: 750, color: '#2563eb' }}>{ev.event_date || 'DATE RECORDED'}</span>
+              <h4 style={{ margin: '2px 0 4px', fontSize: '14px', color: '#172033' }}>{ev.title}</h4>
+              <p style={{ margin: 0, fontSize: '12.5px', color: '#475569', lineHeight: 1.5 }}>{ev.description}</p>
+              {ev.location && <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>📍 Location: {ev.location}</div>}
+            </div>
+          ))}
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
-function CaseCommunicationsSubView() {
+function CaseCommunicationsSubView({ caseId }: { caseId: string }) {
+  const [comms, setComms] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get(`/cases/${caseId}/communications`)
+      .then(res => setComms(res.data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [caseId]);
+
   return (
     <div className="card" style={{ padding: '24px' }}>
-      <h2 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 750, color: '#172033' }}>Intercepted Communications & Call Data Records</h2>
+      <h2 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 750, color: '#172033' }}>Intercepted Communications & Call Data Records ({comms.length})</h2>
       <div className="table-wrap">
         <table>
           <thead>
@@ -969,17 +999,34 @@ function CaseCommunicationsSubView() {
               <th>RECORD ID</th>
               <th>SOURCE NUMBER / ID</th>
               <th>DESTINATION</th>
+              <th>TYPE</th>
               <th>DURATION</th>
               <th>INTERCEPT DATE</th>
-              <th>FLAGGED KEYWORDS</th>
+              <th>FLAGGED STATUS</th>
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: '#7b8494' }}>
-                No CDR or intercepted communications uploaded for this case file yet.
-              </td>
-            </tr>
+            {loading ? (
+              <tr><td colSpan={7} style={{ textAlign: 'center', padding: '24px' }}>Loading communication records...</td></tr>
+            ) : comms.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: '#7b8494' }}>
+                  No CDR or phone communication records logged for this case file yet. Upload call logs or phone evidence under Documents.
+                </td>
+              </tr>
+            ) : (
+              comms.map((c: any, idx: number) => (
+                <tr key={idx}>
+                  <td><b>CDR-{100 + idx}</b></td>
+                  <td><b>{c.source}</b></td>
+                  <td>{c.destination}</td>
+                  <td><span className="type-pill">{c.type}</span></td>
+                  <td>{c.duration}</td>
+                  <td>{c.timestamp}</td>
+                  <td><span className="badge status-active">{c.flagged}</span></td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -987,15 +1034,25 @@ function CaseCommunicationsSubView() {
   );
 }
 
-function CaseFinancialSubView() {
+function CaseFinancialSubView({ caseId }: { caseId: string }) {
+  const [txs, setTxs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get(`/cases/${caseId}/financial`)
+      .then(res => setTxs(res.data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [caseId]);
+
   return (
     <div className="card" style={{ padding: '24px' }}>
-      <h2 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 750, color: '#172033' }}>Financial Audit & Laundering Trace</h2>
+      <h2 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 750, color: '#172033' }}>Financial Audit & Laundering Trace ({txs.length})</h2>
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>TX HASH / ID</th>
+              <th>TX HASH / ACC</th>
               <th>SENDER ACCOUNT</th>
               <th>BENEFICIARY ACCOUNT</th>
               <th>AMOUNT</th>
@@ -1004,11 +1061,26 @@ function CaseFinancialSubView() {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: '#7b8494' }}>
-                No financial transactions ingested for this case file yet. Upload bank statement PDFs under Documents to extract wire traces.
-              </td>
-            </tr>
+            {loading ? (
+              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '24px' }}>Loading financial traces...</td></tr>
+            ) : txs.length === 0 ? (
+              <tr>
+                <td colSpan={6} style={{ textAlign: 'center', padding: '36px', color: '#7b8494' }}>
+                  No financial transactions ingested for this case file yet. Upload bank statement PDFs under Documents tab to extract wire traces.
+                </td>
+              </tr>
+            ) : (
+              txs.map((t: any, idx: number) => (
+                <tr key={idx}>
+                  <td><code>{t.hash}</code></td>
+                  <td><b>{t.sender}</b></td>
+                  <td><b>{t.beneficiary}</b></td>
+                  <td style={{ color: '#16a34a', fontWeight: 700 }}>{t.amount}</td>
+                  <td>{t.timestamp}</td>
+                  <td><span className="badge priority-high">{t.risk_score}</span></td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -1016,13 +1088,42 @@ function CaseFinancialSubView() {
   );
 }
 
-function CaseRelatedSubView() {
+function CaseRelatedSubView({ caseId }: { caseId: string }) {
+  const [related, setRelated] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get(`/cases/${caseId}/related`)
+      .then(res => setRelated(res.data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [caseId]);
+
   return (
     <div className="card" style={{ padding: '24px' }}>
-      <h2 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 750, color: '#172033' }}>Cross-Jurisdictional Linked Cases</h2>
-      <div style={{ textAlign: 'center', padding: '36px', color: '#7b8494', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-        No cross-jurisdictional matches detected yet. Automated link analysis triggers upon document and suspect entity extraction.
-      </div>
+      <h2 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: 750, color: '#172033' }}>Cross-Jurisdictional Linked Cases ({related.length})</h2>
+      {loading ? (
+        <div style={{ padding: '24px', color: '#64748b' }}>Searching cross-jurisdictional intelligence database...</div>
+      ) : related.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '36px', color: '#7b8494', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          No cross-jurisdictional matches detected yet. Upload suspect documents to trigger automated cross-case entity correlation.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {related.map((rel: any) => (
+            <div key={rel.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: 750, color: '#2563eb' }}>{rel.case_number}</span>
+                <h4 style={{ margin: '2px 0 4px', fontSize: '15px', color: '#1e293b' }}>{rel.title}</h4>
+                <div style={{ fontSize: '12px', color: '#64748b' }}>
+                  Shared Entities: {rel.shared_entities?.join(', ')}
+                </div>
+              </div>
+              <span className="badge status-active">{rel.status || 'ACTIVE'}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1358,6 +1459,10 @@ function CaseDocumentsSubView({ caseId, onDocumentUploaded }: { caseId: string; 
   const [loading, setLoading] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [processingDoc, setProcessingDoc] = useState<any>(null);
+  const [pipelineStatus, setPipelineStatus] = useState<any>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchDocuments = () => {
     setLoading(true);
@@ -1371,28 +1476,77 @@ function CaseDocumentsSubView({ caseId, onDocumentUploaded }: { caseId: string; 
 
   useEffect(() => {
     fetchDocuments();
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, [caseId]);
+
+  const startPolling = (docId: number) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await api.get(`/cases/${caseId}/documents/${docId}/status`);
+        setPipelineStatus(res.data);
+        if (res.data.is_complete || res.data.is_failed) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          fetchDocuments();
+          if (onDocumentUploaded) onDocumentUploaded();
+          if (res.data.is_complete) {
+            setTimeout(() => {
+              setProcessingDoc(null);
+              setPipelineStatus(null);
+            }, 2500);
+          }
+        }
+      } catch {
+        // silently retry
+      }
+    }, 1500);
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setUploading(true);
+    setUploadProgress(0);
+    setProcessingDoc({ name: file.name, size: file.size });
+    setPipelineStatus(null);
+
     const formData = new FormData();
     formData.append('file', file);
     formData.append('document_type', 'EVIDENCE');
 
     try {
-      await api.post(`/cases/${caseId}/documents`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      const res = await api.post(`/cases/${caseId}/documents`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (progressEvent: any) => {
+          const pct = progressEvent.total ? Math.round((progressEvent.loaded * 100) / progressEvent.total) : 0;
+          setUploadProgress(pct);
+        }
       });
       setUploading(false);
-      fetchDocuments();
-      if (onDocumentUploaded) onDocumentUploaded();
+      setUploadProgress(100);
+      const docId = res.data.id;
+      // Start polling processing status
+      setPipelineStatus({ percent: 5, status: 'PENDING', stages: [], is_complete: false, is_failed: false });
+      startPolling(docId);
     } catch (err) {
       setUploading(false);
+      setUploadProgress(0);
+      setProcessingDoc(null);
+      setPipelineStatus(null);
       alert('Failed to upload file. Ensure server backend is running.');
     }
+  };
+
+  const closePipeline = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = null;
+    setProcessingDoc(null);
+    setPipelineStatus(null);
+    fetchDocuments();
   };
 
   return (
@@ -1405,6 +1559,198 @@ function CaseDocumentsSubView({ caseId, onDocumentUploaded }: { caseId: string; 
         />
       )}
 
+      {/* Processing Pipeline Overlay */}
+      {processingDoc && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.7)',
+          backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', zIndex: 2000, padding: '20px'
+        }}>
+          <div style={{
+            width: '640px', maxWidth: '95vw', background: '#fff',
+            borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+            padding: '32px', position: 'relative'
+          }}>
+            {/* Close button for completed/failed */}
+            {pipelineStatus?.is_complete || pipelineStatus?.is_failed ? (
+              <button onClick={closePipeline} style={{
+                position: 'absolute', top: '16px', right: '16px',
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: '#64748b', fontSize: '18px'
+              }}>✕</button>
+            ) : null}
+
+            {/* Header */}
+            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+              <div style={{
+                width: '56px', height: '56px', borderRadius: '50%',
+                background: pipelineStatus?.is_complete ? '#ecfdf5' : pipelineStatus?.is_failed ? '#fef2f2' : '#eff6ff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 12px', fontSize: '24px'
+              }}>
+                {pipelineStatus?.is_complete ? '✅' : pipelineStatus?.is_failed ? '❌' : '🔄'}
+              </div>
+              <h2 style={{ margin: '0 0 4px', fontSize: '20px', fontWeight: 750, color: '#0f172a' }}>
+                {pipelineStatus?.is_complete ? 'Processing Complete' : pipelineStatus?.is_failed ? 'Processing Failed' : 'Processing Evidence Document'}
+              </h2>
+              <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
+                {processingDoc.name} ({(processingDoc.size / 1024).toFixed(1)} KB)
+              </p>
+            </div>
+
+            {/* Overall progress bar */}
+            <div style={{ marginBottom: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#334155' }}>Overall Progress</span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#2563eb' }}>
+                  {uploading ? `Uploading... ${uploadProgress}%` : `${pipelineStatus?.percent || 0}%`}
+                </span>
+              </div>
+              <div style={{
+                width: '100%', height: '8px', background: '#e2e8f0',
+                borderRadius: '4px', overflow: 'hidden'
+              }}>
+                <div style={{
+                  width: `${uploading ? uploadProgress * 0.05 : (pipelineStatus?.percent || 0)}%`,
+                  height: '100%',
+                  background: pipelineStatus?.is_failed ? '#ef4444' :
+                    pipelineStatus?.is_complete ? '#16a34a' :
+                    'linear-gradient(90deg, #3b82f6, #6366f1)',
+                  borderRadius: '4px',
+                  transition: 'width 0.6s ease'
+                }} />
+              </div>
+            </div>
+
+            {/* Pipeline stages */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {/* Upload stage (always first) */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '12px',
+                padding: '10px 14px', borderRadius: '8px',
+                background: uploading ? '#eff6ff' : '#f0fdf4',
+                border: `1px solid ${uploading ? '#bfdbfe' : '#bbf7d0'}`
+              }}>
+                <div style={{
+                  width: '28px', height: '28px', borderRadius: '50%',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '13px', fontWeight: 700,
+                  background: uploading ? '#3b82f6' : '#16a34a',
+                  color: '#fff'
+                }}>
+                  {uploading ? (
+                    <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
+                  ) : '✓'}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}>File Upload</div>
+                  <div style={{ fontSize: '11px', color: '#64748b' }}>
+                    {uploading ? `Uploading ${uploadProgress}%...` : 'File uploaded to server'}
+                  </div>
+                </div>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: uploading ? '#3b82f6' : '#16a34a' }}>
+                  {uploading ? 'IN PROGRESS' : 'DONE'}
+                </span>
+              </div>
+
+              {/* Backend processing stages */}
+              {(pipelineStatus?.stages || []).map((stage: any, idx: number) => {
+                const isDone = stage.state === 'done';
+                const isActive = stage.state === 'active';
+                const isFailed = stage.state === 'failed';
+                const isPending = stage.state === 'pending';
+
+                return (
+                  <div key={stage.key} style={{
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    padding: '10px 14px', borderRadius: '8px',
+                    background: isDone ? '#f0fdf4' : isActive ? '#eff6ff' : isFailed ? '#fef2f2' : '#f8fafc',
+                    border: `1px solid ${isDone ? '#bbf7d0' : isActive ? '#bfdbfe' : isFailed ? '#fecaca' : '#e2e8f0'}`,
+                    opacity: isPending ? 0.5 : 1,
+                    transition: 'all 0.4s ease'
+                  }}>
+                    <div style={{
+                      width: '28px', height: '28px', borderRadius: '50%',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '13px', fontWeight: 700,
+                      background: isDone ? '#16a34a' : isActive ? '#3b82f6' : isFailed ? '#ef4444' : '#cbd5e1',
+                      color: '#fff'
+                    }}>
+                      {isDone ? '✓' : isActive ? (
+                        <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span>
+                      ) : isFailed ? '✗' : (idx + 1)}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: isPending ? '#94a3b8' : '#0f172a' }}>
+                        {stage.label}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>
+                        {isDone ? 'Completed' : isActive ? 'Processing...' : isFailed ? 'Failed' : 'Waiting...'}
+                      </div>
+                    </div>
+                    <span style={{
+                      fontSize: '11px', fontWeight: 700,
+                      color: isDone ? '#16a34a' : isActive ? '#3b82f6' : isFailed ? '#ef4444' : '#94a3b8'
+                    }}>
+                      {isDone ? 'DONE' : isActive ? 'IN PROGRESS' : isFailed ? 'ERROR' : 'PENDING'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Error message */}
+            {pipelineStatus?.is_failed && pipelineStatus?.error && (
+              <div style={{
+                marginTop: '16px', padding: '12px', background: '#fef2f2',
+                border: '1px solid #fecaca', borderRadius: '8px',
+                fontSize: '12px', color: '#b91c1c', lineHeight: 1.5
+              }}>
+                <strong>Error:</strong> {pipelineStatus.error}
+              </div>
+            )}
+
+            {/* Success stats */}
+            {pipelineStatus?.is_complete && (
+              <div style={{
+                marginTop: '16px', padding: '16px', background: '#f0fdf4',
+                border: '1px solid #bbf7d0', borderRadius: '8px',
+                display: 'flex', gap: '24px', justifyContent: 'center'
+              }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#16a34a' }}>
+                    {pipelineStatus.total_pages || '—'}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b' }}>Pages Parsed</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#16a34a' }}>
+                    {pipelineStatus.total_chunks || '—'}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b' }}>Chunks Created</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: '#16a34a' }}>100%</div>
+                  <div style={{ fontSize: '11px', color: '#64748b' }}>Complete</div>
+                </div>
+              </div>
+            )}
+
+            {/* Action button */}
+            {(pipelineStatus?.is_complete || pipelineStatus?.is_failed) && (
+              <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                <button className="primary" onClick={closePipeline} style={{ padding: '10px 32px' }}>
+                  {pipelineStatus.is_complete ? 'View Processed Documents' : 'Close & Retry'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Spin keyframe animation */}
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 750, color: '#172033' }}>Case Evidence Documents ({documents.length})</h2>
@@ -1413,7 +1759,7 @@ function CaseDocumentsSubView({ caseId, onDocumentUploaded }: { caseId: string; 
 
         <label className="primary" style={{ cursor: 'pointer', padding: '8px 16px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <Plus size={16} /> {uploading ? 'Uploading File...' : 'Upload Evidence Document'}
-          <input type="file" onChange={handleFileUpload} disabled={uploading} style={{ display: 'none' }} />
+          <input type="file" onChange={handleFileUpload} disabled={uploading || !!processingDoc} style={{ display: 'none' }} />
         </label>
       </div>
 
@@ -1452,7 +1798,7 @@ function CaseDocumentsSubView({ caseId, onDocumentUploaded }: { caseId: string; 
                   <td>{doc.file_size ? `${(doc.file_size / 1024).toFixed(1)} KB` : '1.2 MB'}</td>
                   <td className="num">{doc.total_chunks || doc.chunk_count || 0}</td>
                   <td>
-                    <span className={`badge ${doc.processing_status === 'COMPLETED' ? 'status-active' : 'status-under-review'}`}>
+                    <span className={`badge ${doc.processing_status === 'COMPLETED' ? 'status-active' : doc.processing_status === 'FAILED' ? 'priority-high' : 'status-under-review'}`}>
                       {doc.processing_status || 'COMPLETED'}
                     </span>
                   </td>

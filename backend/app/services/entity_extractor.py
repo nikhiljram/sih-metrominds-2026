@@ -58,35 +58,45 @@ class EntityExtractor:
         """Extract entities from a single chunk and store/update in database."""
 
         prompt = ENTITY_EXTRACTION_PROMPT.format(text=chunk_content)
+        raw_entities = []
 
         try:
             raw_entities = llm.generate_structured(prompt)
         except Exception:
-            # If structured output fails, try regular generation
+            pass
+
+        if not raw_entities or not isinstance(raw_entities, list):
             try:
                 text_response = llm.generate(prompt, temperature=0.1)
                 raw_entities = json.loads(text_response)
             except Exception:
-                return []
+                raw_entities = []
 
-        if not isinstance(raw_entities, list):
-            raw_entities = raw_entities.get("entities", []) if isinstance(raw_entities, dict) else []
+        if isinstance(raw_entities, dict):
+            raw_entities = raw_entities.get("entities", [])
+
+        # Heuristic Regex Extraction Fallback for high precision forensic entities
+        fallback_entities = self._regex_extract_entities(chunk_content)
+        if isinstance(raw_entities, list):
+            raw_entities.extend(fallback_entities)
+        else:
+            raw_entities = fallback_entities
 
         created_entities = []
         for raw in raw_entities:
             if not isinstance(raw, dict):
                 continue
 
-            entity_type = raw.get("type", "").upper()
-            entity_value = raw.get("value", "").strip()
-            normalized = raw.get("normalized", entity_value).strip()
+            entity_type = str(raw.get("type", "")).upper()
+            entity_value = str(raw.get("value", "")).strip()
+            normalized = str(raw.get("normalized", entity_value)).strip()
             confidence = float(raw.get("confidence", 0.8))
 
             if not entity_type or not entity_value:
                 continue
 
             # Strict noise & generic word filter
-            if len(normalized) < 2 or normalized.lower() in IGNORED_ENTITY_WORDS or confidence < 0.70:
+            if len(normalized) < 2 or normalized.lower() in IGNORED_ENTITY_WORDS:
                 continue
 
             # Validate entity type
@@ -96,7 +106,7 @@ class EntityExtractor:
                 "DATE", "WEAPON", "DRUG", "AMOUNT", "OBJECT", "DOCUMENT_REF"
             ]
             if entity_type not in valid_types:
-                continue
+                entity_type = "OBJECT"
 
             # Deduplicate: check if entity already exists in this case
             existing = (
@@ -110,11 +120,9 @@ class EntityExtractor:
             )
 
             if existing:
-                # Update existing entity
                 existing.mention_count += 1
                 existing.confidence = max(existing.confidence, confidence)
 
-                # Add new source
                 source = EntitySource(
                     entity_id=existing.id,
                     chunk_id=chunk_id,
@@ -125,7 +133,6 @@ class EntityExtractor:
                 db.add(source)
                 created_entities.append(existing)
             else:
-                # Create new entity
                 entity = Entity(
                     case_id=case_id,
                     entity_type=entity_type,
@@ -138,7 +145,6 @@ class EntityExtractor:
                 db.add(entity)
                 db.flush()
 
-                # Add source
                 source = EntitySource(
                     entity_id=entity.id,
                     chunk_id=chunk_id,
@@ -151,6 +157,54 @@ class EntityExtractor:
 
         db.commit()
         return created_entities
+
+    def _regex_extract_entities(self, text: str) -> list[dict]:
+        """Pattern matching for entities in case reports, tables, and raw text."""
+        import re
+        results = []
+
+        # 1. ENT-xxx or ID patterns (e.g. ENT-001 Arun Kumar)
+        ent_matches = re.findall(r'(ENT-\d+)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)', text)
+        for ent_id, name in ent_matches:
+            results.append({"type": "PERSON", "value": f"{ent_id} {name}", "normalized": f"{ent_id} {name}", "confidence": 0.95})
+            results.append({"type": "PERSON", "value": name, "normalized": name, "confidence": 0.95})
+
+        # 2. Indian Phone numbers (10 digits)
+        phones = re.findall(r'(?:\+91[\s-]?)?([6-9]\d{9})', text)
+        for ph in set(phones):
+            results.append({"type": "PHONE", "value": ph, "normalized": ph, "confidence": 0.95})
+
+        # 3. Emails
+        emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)
+        for em in set(emails):
+            results.append({"type": "EMAIL", "value": em, "normalized": em.lower(), "confidence": 0.95})
+
+        # 4. Currency amounts
+        amounts = re.findall(r'(?:₹|INR|\$)\s*[\d,]+(?:\.\d+)?', text, re.IGNORECASE)
+        for am in set(amounts):
+            results.append({"type": "AMOUNT", "value": am, "normalized": am, "confidence": 0.90})
+
+        # 5. Vehicle registration
+        vehicles = re.findall(r'\b[A-Z]{2}[-\s]?\d{2}[-\s]?[A-Z]{1,2}[-\s]?\d{4}\b', text)
+        for v in set(vehicles):
+            results.append({"type": "VEHICLE", "value": v, "normalized": v.replace(" ", "").replace("-", ""), "confidence": 0.95})
+
+        # 6. Dates
+        dates = re.findall(r'\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}/\d{1,2}/\d{4}\b', text)
+        for d in set(dates):
+            results.append({"type": "DATE", "value": d, "normalized": d, "confidence": 0.85})
+
+        # 7. Table rows with Entity IDs or Names (e.g. ENT-001 | Arun Kumar | Person)
+        lines = text.split('\n')
+        for line in lines:
+            if '|' in line:
+                parts = [p.strip() for p in line.split('|') if p.strip()]
+                for p in parts:
+                    if re.match(r'^(ENT-\d+|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)$', p):
+                        if not p.lower() in IGNORED_ENTITY_WORDS:
+                            results.append({"type": "PERSON", "value": p, "normalized": p, "confidence": 0.90})
+
+        return results
 
 
 # Singleton

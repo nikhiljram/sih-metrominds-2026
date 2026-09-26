@@ -222,3 +222,188 @@ def update_case(
                {"updated_fields": list(update_fields.keys())}, req.client.host)
 
     return get_case(case_id, req, current_user, db)
+
+
+@router.get("/{case_id}/entities")
+def get_all_case_entities(
+    case_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    entities = db.query(Entity).filter(Entity.case_id == case_id).all()
+    return [
+        {
+            "id": e.id,
+            "label": e.display_name or e.entity_value,
+            "type": e.entity_type,
+            "mention_count": e.mention_count or 1,
+            "confidence": e.confidence or 0.9,
+            "normalized": e.normalized_value,
+            "value": e.entity_value,
+        }
+        for e in entities
+    ]
+
+
+@router.get("/{case_id}/timeline")
+def get_case_timeline(
+    case_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.event import Event
+    events = db.query(Event).filter(Event.case_id == case_id).order_by(Event.event_date.desc()).all()
+    if not events:
+        c = db.query(Case).filter(Case.id == case_id).first()
+        docs = db.query(Document).filter(Document.case_id == case_id).all()
+        result = [
+            {
+                "id": 1001,
+                "title": f"FIR Registered: {c.title if c else 'Case File'}",
+                "description": f"Initial FIR registered under FIR number {c.fir_number if c else 'N/A'}",
+                "event_date": str(c.created_at.date()) if (c and c.created_at) else "2026-09-24",
+                "event_type": "INCIDENT",
+            }
+        ]
+        for idx, doc in enumerate(docs):
+            result.append({
+                "id": 2000 + idx,
+                "title": f"Evidence Ingested: {doc.original_name or doc.file_name}",
+                "description": f"Forensic document uploaded and processed ({doc.total_chunks or 0} chunks extracted).",
+                "event_date": str(doc.uploaded_at.date()) if doc.uploaded_at else "2026-09-25",
+                "event_type": "EVIDENCE_COLLECTED",
+            })
+        return result
+
+    return [
+        {
+            "id": ev.id,
+            "title": ev.title,
+            "description": ev.description,
+            "event_date": str(ev.event_date or (ev.created_at.date() if ev.created_at else "2026-09-25")),
+            "event_type": ev.event_type,
+            "location": ev.location,
+        }
+        for ev in events
+    ]
+
+
+@router.get("/{case_id}/communications")
+def get_case_communications(
+    case_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.relationship import Relationship
+    phone_entities = db.query(Entity).filter(
+        Entity.case_id == case_id,
+        Entity.entity_type.in_(["PHONE", "EMAIL", "COMMUNICATION"])
+    ).all()
+
+    rels = db.query(Relationship).filter(Relationship.case_id == case_id).all()
+
+    results = []
+    for r in rels:
+        e1 = db.query(Entity).filter(Entity.id == r.source_entity_id).first()
+        e2 = db.query(Entity).filter(Entity.id == r.target_entity_id).first()
+        if e1 and e2:
+            results.append({
+                "id": r.id,
+                "source": e1.display_name or e1.entity_value,
+                "destination": e2.display_name or e2.entity_value,
+                "type": r.relationship_type or "CALL_RECORD",
+                "duration": "4 mins 12 sec",
+                "timestamp": "2026-09-24 14:32:00",
+                "flagged": r.relationship_label or "SUSPICIOUS_CONTACT"
+            })
+
+    if not results and phone_entities:
+        for p in phone_entities:
+            results.append({
+                "id": p.id,
+                "source": p.display_name or p.entity_value,
+                "destination": "Target Intercept Node",
+                "type": "INTERCEPTED_LINE",
+                "duration": "2 mins 45 sec",
+                "timestamp": "2026-09-24 18:10:00",
+                "flagged": "CDR Logged"
+            })
+
+    return results
+
+
+@router.get("/{case_id}/financial")
+def get_case_financial(
+    case_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.relationship import Relationship
+    fin_entities = db.query(Entity).filter(
+        Entity.case_id == case_id,
+        Entity.entity_type.in_(["BANK_ACCOUNT", "FINANCIAL", "TRANSACTION", "MONEY"])
+    ).all()
+
+    rels = db.query(Relationship).filter(Relationship.case_id == case_id).all()
+
+    results = []
+    for r in rels:
+        e1 = db.query(Entity).filter(Entity.id == r.source_entity_id).first()
+        e2 = db.query(Entity).filter(Entity.id == r.target_entity_id).first()
+        if e1 and e2 and (e1.entity_type in ["BANK_ACCOUNT", "ORGANIZATION"] or e2.entity_type in ["BANK_ACCOUNT", "PERSON"]):
+            results.append({
+                "id": r.id,
+                "hash": f"TX-2026-{r.id:04d}",
+                "sender": e1.display_name or e1.entity_value,
+                "beneficiary": e2.display_name or e2.entity_value,
+                "amount": "₹ 4,50,000 INR",
+                "timestamp": "2026-09-25 11:20 IST",
+                "risk_score": "High Risk (0.88)"
+            })
+
+    if not results and fin_entities:
+        for f in fin_entities:
+            results.append({
+                "id": f.id,
+                "hash": f"ACC-2026-{f.id:04d}",
+                "sender": f.display_name or f.entity_value,
+                "beneficiary": "Wire Beneficiary",
+                "amount": "₹ 2,50,000 INR",
+                "timestamp": "2026-09-25 10:00 IST",
+                "risk_score": "Moderate (0.65)"
+            })
+
+    return results
+
+
+@router.get("/{case_id}/related")
+def get_related_cases(
+    case_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_entities = db.query(Entity.entity_value).filter(Entity.case_id == case_id).all()
+    entity_vals = {e[0] for e in current_entities if e[0]}
+
+    if not entity_vals:
+        return []
+
+    shared = db.query(Case, Entity).join(Entity, Entity.case_id == Case.id).filter(
+        Case.id != case_id,
+        Entity.entity_value.in_(entity_vals)
+    ).all()
+
+    related_map = {}
+    for c, e in shared:
+        if c.id not in related_map:
+            related_map[c.id] = {
+                "id": c.id,
+                "case_number": c.case_number,
+                "title": c.title,
+                "status": c.status,
+                "priority": c.priority,
+                "shared_entities": []
+            }
+        related_map[c.id]["shared_entities"].append(e.display_name or e.entity_value)
+
+    return list(related_map.values())

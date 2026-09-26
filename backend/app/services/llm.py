@@ -146,6 +146,9 @@ class LLMProvider:
 
     def generate_structured(self, prompt: str, system_prompt: str = None, temperature: float = 0.1) -> dict:
         """Generate structured JSON output from LLM."""
+        if not self.client:
+            return {}
+
         config = types.GenerateContentConfig(
             temperature=temperature,
             max_output_tokens=4096,
@@ -154,24 +157,16 @@ class LLMProvider:
         if system_prompt:
             config.system_instruction = system_prompt
 
-        response = self.client.models.generate_content(
-            model=self.model,
-            contents=prompt,
-            config=config,
-        )
-
         try:
+            response = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=config,
+            )
             return json.loads(response.text)
-        except json.JSONDecodeError:
-            # Fallback: try to extract JSON from the response
-            text = response.text.strip()
-            if text.startswith("```json"):
-                text = text[7:]
-            if text.startswith("```"):
-                text = text[3:]
-            if text.endswith("```"):
-                text = text[:-3]
-            return json.loads(text.strip())
+        except Exception as e:
+            print(f"[WARN] Gemini API structured call failed: {e}")
+            return {}
 
 
 # Singleton

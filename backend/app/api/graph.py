@@ -16,14 +16,14 @@ router = APIRouter(tags=["Graph"])
 
 import math
 
-ID_CODE_PATTERN = re.compile(r'^(P|L|T|LOC|ACC|DOC|EVD|ID|REF|SRC|COL)[\d_-]*$', re.IGNORECASE)
+ID_CODE_PATTERN = re.compile(r'^(T|DOC|REF|SRC|COL)[\d_-]*$', re.IGNORECASE)
 DATE_PATTERN = re.compile(r'^\d{4}[-/.]\d{2}[-/.]\d{2}$|^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}$')
 GENERIC_NOISE_WORDS = {
     'person_id', 'location_id', 'transaction_id', 'source_id', 'target_id', 'receiver_id', 'sender_id',
     'name', 'age', 'location', 'role', 'context', 'details', 'amount_inr', 'method', 'date', 'city',
     'person', 'relationship', 'relationship_type', 'page 1', 'page 2',
-    'source', 'target', 'unknown', 'n/a', 'none', 'null', 'p001', 'p002', 'p003', 'p004', 'l001', 'l002', 'l003', 'l004',
-    'office area', 'bus terminal', 'residential area', 'transport area', 'meeting location', 'area', 'terminal', 'location'
+    'source', 'target', 'unknown', 'n/a', 'none', 'null',
+    'office area', 'bus terminal', 'residential area', 'transport area', 'meeting location', 'area', 'terminal'
 }
 
 def is_valid_proper_noun(label: str) -> bool:
@@ -36,8 +36,6 @@ def is_valid_proper_noun(label: str) -> bool:
     if DATE_PATTERN.match(val):
         return False
     if ID_CODE_PATTERN.match(val):
-        return False
-    if re.match(r'^[A-Za-z]?\d+$', val):
         return False
     return True
 

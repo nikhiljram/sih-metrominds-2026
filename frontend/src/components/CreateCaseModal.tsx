@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import DocumentProgressBar from './DocumentProgressBar';
 import { X } from 'lucide-react';
 import api from '../api';
+import styles from './CreateCaseModal.module.css';
 
 interface CreateCaseModalProps {
   isOpen: boolean;
@@ -16,13 +18,17 @@ export default function CreateCaseModal({ isOpen, onClose, onCaseCreated }: Crea
   const [description, setDescription] = useState('');
   const [incidentLocation, setIncidentLocation] = useState('');
   const [files, setFiles] = useState<File[]>([]);
+  // Track uploaded document IDs for progress display
+  const [uploadedDocs, setUploadedDocs] = useState<Array<{ id: number; name: string }>>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [createdCaseId, setCreatedCaseId] = useState<number | null>(null);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setUploadedDocs([]);
     try {
       const res = await api.post('/cases', {
         title,
@@ -30,78 +36,75 @@ export default function CreateCaseModal({ isOpen, onClose, onCaseCreated }: Crea
         case_type: caseType,
         priority,
         description,
-        incident_location: incidentLocation
+        incident_location: incidentLocation,
       });
-
       const newCaseId = res.data?.id;
-
-      // Upload selected initial files if any
+      setCreatedCaseId(newCaseId);
       if (newCaseId && files.length > 0) {
         for (const file of files) {
           const formData = new FormData();
           formData.append('file', file);
           formData.append('document_type', 'EVIDENCE');
           try {
-            await api.post(`/cases/${newCaseId}/documents`, formData, {
-              headers: { 'Content-Type': 'multipart/form-data' }
+            const uploadRes = await api.post(`/cases/${newCaseId}/documents`, formData, {
+              headers: { 'Content-Type': 'multipart/form-data' },
             });
+            const docId = uploadRes.data?.id;
+            if (docId) {
+              setUploadedDocs(prev => [...prev, { id: docId, name: file.name }]);
+            }
           } catch (e) {
             console.error('Initial document upload error:', e);
           }
         }
       }
-
       setSubmitting(false);
       onCaseCreated();
-      onClose();
     } catch (err: any) {
       setSubmitting(false);
-      const msg = err.response?.data?.detail || err.response?.data?.message || 'Failed to create case. Ensure backend database is connected and fields are valid.';
+      const msg = err.response?.data?.detail || err.response?.data?.message || 'Failed to create case.';
       alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
     }
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.4)', zIndex: 100, display: 'grid', placeItems: 'center', padding: '16px' }}>
-      <div className="card" style={{ width: '100%', maxWidth: '540px', padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 750, color: '#172033' }}>Register New Investigation Case</h2>
-          <button onClick={onClose} style={{ border: 0, background: 'transparent', color: '#7b8494' }}>
+    <div className={styles.overlay}>
+      <div className={styles.card}>
+        <div className={styles.header}>
+          <h2 className={styles.title}>Register New Investigation Case</h2>
+          <button onClick={onClose} className={styles.closeButton}>
             <X size={20} />
           </button>
         </div>
-
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <form onSubmit={handleSubmit} className={styles.form}>
           <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: 650, color: '#687386', marginBottom: '4px' }}>CASE TITLE *</label>
+            <label className={styles.label}>CASE TITLE *</label>
             <input
               type="text"
               required
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder="e.g. Operation Phantom Wire"
-              style={{ width: '100%', height: '40px', padding: '0 12px', background: '#fff', border: '1px solid #d8e0ea', borderRadius: '8px', fontSize: '13px' }}
+              className={styles.input}
             />
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div className={styles.fieldContainer}>
             <div>
-              <label style={{ display: 'block', fontSize: '11px', fontWeight: 650, color: '#687386', marginBottom: '4px' }}>FIR NUMBER</label>
+              <label className={styles.label}>FIR NUMBER</label>
               <input
                 type="text"
                 value={firNumber}
                 onChange={e => setFirNumber(e.target.value)}
                 placeholder="FIR-00891/2026"
-                style={{ width: '100%', height: '40px', padding: '0 12px', background: '#fff', border: '1px solid #d8e0ea', borderRadius: '8px', fontSize: '13px' }}
+                className={styles.input}
               />
             </div>
-
             <div>
-              <label style={{ display: 'block', fontSize: '11px', fontWeight: 650, color: '#687386', marginBottom: '4px' }}>CASE TYPE</label>
+              <label className={styles.label}>CASE TYPE</label>
               <select
                 value={caseType}
                 onChange={e => setCaseType(e.target.value)}
-                style={{ width: '100%', height: '40px', padding: '0 12px', background: '#fff', border: '1px solid #d8e0ea', borderRadius: '8px', fontSize: '13px' }}
+                className={styles.select}
               >
                 <option value="FRAUD">Financial Fraud</option>
                 <option value="CYBERCRIME">Cybercrime</option>
@@ -112,14 +115,13 @@ export default function CreateCaseModal({ isOpen, onClose, onCaseCreated }: Crea
               </select>
             </div>
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div className={styles.fieldContainer}>
             <div>
-              <label style={{ display: 'block', fontSize: '11px', fontWeight: 650, color: '#687386', marginBottom: '4px' }}>PRIORITY LEVEL</label>
+              <label className={styles.label}>PRIORITY LEVEL</label>
               <select
                 value={priority}
                 onChange={e => setPriority(e.target.value)}
-                style={{ width: '100%', height: '40px', padding: '0 12px', background: '#fff', border: '1px solid #d8e0ea', borderRadius: '8px', fontSize: '13px' }}
+                className={styles.select}
               >
                 <option value="CRITICAL">Critical</option>
                 <option value="HIGH">High Priority</option>
@@ -127,46 +129,50 @@ export default function CreateCaseModal({ isOpen, onClose, onCaseCreated }: Crea
                 <option value="LOW">Low Priority</option>
               </select>
             </div>
-
             <div>
-              <label style={{ display: 'block', fontSize: '11px', fontWeight: 650, color: '#687386', marginBottom: '4px' }}>INCIDENT LOCATION</label>
+              <label className={styles.label}>INCIDENT LOCATION</label>
               <input
                 type="text"
                 value={incidentLocation}
                 onChange={e => setIncidentLocation(e.target.value)}
                 placeholder="Metropolitan Office Hub"
-                style={{ width: '100%', height: '40px', padding: '0 12px', background: '#fff', border: '1px solid #d8e0ea', borderRadius: '8px', fontSize: '13px' }}
+                className={styles.input}
               />
             </div>
           </div>
-
           <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: 650, color: '#687386', marginBottom: '4px' }}>CASE DESCRIPTION / SYNOPSIS</label>
+            <label className={styles.label}>CASE DESCRIPTION / SYNOPSIS</label>
             <textarea
               rows={2}
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Provide executive case background..."
-              style={{ width: '100%', padding: '8px 12px', background: '#fff', border: '1px solid #d8e0ea', borderRadius: '8px', fontSize: '13px', outline: 0 }}
+              className={styles.textarea}
             />
           </div>
-
           <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: 650, color: '#687386', marginBottom: '4px' }}>INITIAL EVIDENCE FILES (FIR, BANK STATEMENTS, DIGITAL DUMPS)</label>
+            <label className={styles.label}>INITIAL EVIDENCE FILES (FIR, BANK STATEMENTS, DIGITAL DUMPS)</label>
             <input
               type="file"
               multiple
               onChange={e => setFiles(Array.from(e.target.files || []))}
-              style={{ width: '100%', padding: '8px 12px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', fontSize: '13px' }}
+              className={styles.fileInput}
             />
             {files.length > 0 && (
-              <div style={{ fontSize: '12px', color: '#2563eb', marginTop: '4px', fontWeight: 600 }}>
+              <div className={styles.fileInfo}>
                 {files.length} file(s) attached: {files.map(f => f.name).join(', ')}
               </div>
             )}
+            {createdCaseId && uploadedDocs.map(doc => (
+              <DocumentProgressBar
+                key={doc.id}
+                caseId={createdCaseId}
+                documentId={doc.id}
+                fileName={doc.name}
+              />
+            ))}
           </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
+          <div className={styles.buttonContainer}>
             <button type="button" onClick={onClose} className="secondary">
               Cancel
             </button>

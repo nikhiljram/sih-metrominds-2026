@@ -1,0 +1,95 @@
+/* CreateCaseModal.module.css */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.card {
+  width: 100%;
+  max-width: 540px;
+  padding: 24px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 750;
+  color: #172033;
+}
+.closeButton {
+  border: 0;
+  background: transparent;
+  color: #7b8494;
+  cursor: pointer;
+}
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.fieldContainer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.label {
+  display: block;
+  font-size: 11px;
+  font-weight: 650;
+  color: #687386;
+  margin-bottom: 4px;
+}
+.input, .select, .textarea {
+  width: 100%;
+  padding: 0 12px;
+  background: #fff;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.input {
+  height: 40px;
+}
+.select {
+  height: 40px;
+}
+.textarea {
+  padding: 8px 12px;
+  border: 1px solid #d8e0ea;
+  resize: vertical;
+}
+.fileContainer {
+  width: 100%;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.fileInput {
+  width: 100%;
+}
+.fileInfo {
+  font-size: 12px;
+  color: #2563eb;
+  margin-top: 4px;
+  font-weight: 600;
+}
+.buttonContainer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}

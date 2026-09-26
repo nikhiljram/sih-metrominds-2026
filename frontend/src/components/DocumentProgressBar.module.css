@@ -1,0 +1,21 @@
+/* DocumentProgressBar.module.css */
+.progressContainer {
+  margin-top: 12px;
+}
+.step {
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #4b5563;
+}
+.barBackground {
+  width: 100%;
+  background-color: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  height: 8px;
+}
+.barFill {
+  height: 100%;
+  background-color: #3b82f6;
+  transition: width 0.3s ease;
+}
