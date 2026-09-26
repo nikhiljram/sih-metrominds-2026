@@ -1,5 +1,4 @@
-"""Graph API routes — network visualization, entity profiles, cross-case"""
-
+import re
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -14,6 +13,26 @@ from app.schemas.search import GraphResponse, GraphNode, GraphEdge, EntityProfil
 from app.dependencies import get_current_user
 
 router = APIRouter(tags=["Graph"])
+
+ID_CODE_PATTERN = re.compile(r'^(P|L|T|LOC|ACC|DOC|EVD|ID|REF|SRC|COL)[\d_-]*$', re.IGNORECASE)
+GENERIC_NOISE_WORDS = {
+    'person_id', 'location_id', 'transaction_id', 'source_id', 'target_id', 'receiver_id', 'sender_id',
+    'name', 'age', 'location', 'role', 'context', 'details', 'amount_inr', 'method', 'date', 'city',
+    'person', 'location', 'transaction', 'relationship', 'relationship_type', 'page 1', 'page 2',
+    'source', 'target', 'unknown', 'n/a', 'none', 'null', 'p001', 'p002', 'p003', 'p004', 'l001', 'l002', 'l003', 'l004'
+}
+
+def is_valid_proper_noun(label: str) -> bool:
+    if not label or len(label.strip()) < 2:
+        return False
+    val = label.strip()
+    if val.lower() in GENERIC_NOISE_WORDS:
+        return False
+    if ID_CODE_PATTERN.match(val):
+        return False
+    if re.match(r'^[A-Za-z]?\d+$', val):
+        return False
+    return True
 
 
 @router.get("/cases/{case_id}/graph", response_model=GraphResponse)
@@ -30,7 +49,8 @@ def get_case_graph(
         types_list = [t.strip().upper() for t in entity_types.split(",")]
         entity_query = entity_query.filter(Entity.entity_type.in_(types_list))
 
-    entities = entity_query.all()
+    raw_entities = entity_query.all()
+    entities = [e for e in raw_entities if is_valid_proper_noun(e.display_name or e.entity_value)]
 
     # Build nodes
     entity_ids = {e.id for e in entities}

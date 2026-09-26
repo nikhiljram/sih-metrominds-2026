@@ -1543,7 +1543,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
   const [rotX, setRotX] = useState<number>(0.2);
   const [rotY, setRotY] = useState<number>(0.4);
   const [zoom, setZoom] = useState<number>(1.0);
-  const [autoRotate, setAutoRotate] = useState<boolean>(true);
+  const [autoRotate, setAutoRotate] = useState<boolean>(false);
 
   // Computed 3D force layout positions: id -> {x, y, z}
   const [nodePositions3D, setNodePositions3D] = useState<{ [key: string]: { x: number; y: number; z: number } }>({});
@@ -1573,7 +1573,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
   // AI-Assisted 3D Force-Directed Physics Simulation
   // Distance between nodes is inversely proportional to relation score (stronger relation = closer distance)
   const compute3DForceLayout = (rawNodes: any[], rawEdges: any[]) => {
-    const validNodes = rawNodes.filter((n: any) => n.label && n.label.trim().length >= 2);
+    const validNodes = rawNodes.filter((n: any) => n.label && isValidProperEntity(n.label));
     if (validNodes.length === 0) return;
 
     const numNodes = validNodes.length;
@@ -1685,9 +1685,30 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
     return () => clearInterval(interval);
   }, [autoRotate]);
 
+  const isValidProperEntity = (label: string) => {
+    if (!label || label.trim().length < 2) return false;
+    const l = label.trim();
+    const lower = l.toLowerCase();
+
+    // Filter out CSV header noise, column titles & schema words
+    const genericNoise = new Set([
+      'person_id', 'location_id', 'transaction_id', 'source_id', 'target_id', 'receiver_id', 'sender_id',
+      'name', 'age', 'location', 'role', 'context', 'details', 'amount_inr', 'method', 'date', 'city',
+      'person', 'relationship', 'relationship_type', 'page 1', 'page 2', 'source', 'target',
+      'unknown', 'n/a', 'none', 'null', 'p001', 'p002', 'p003', 'p004', 'l001', 'l002', 'l003', 'l004'
+    ]);
+    if (genericNoise.has(lower)) return false;
+
+    // Filter out synthetic ID codes like P001, P002, L001, T001, LOC01, etc.
+    if (/^(p|l|t|loc|acc|doc|evd|id|ref|src|col)[\d_-]*$/i.test(l)) return false;
+    if (/^[a-z]?\d+$/i.test(l)) return false;
+
+    return true;
+  };
+
   const rawNodes = graphData.nodes || [];
   const edges = graphData.edges || [];
-  const nodes = rawNodes.filter((n: any) => n.label && n.label.trim().length >= 2);
+  const nodes = rawNodes.filter((n: any) => n.label && isValidProperEntity(n.label));
 
   const width = 800;
   const height = 480;
