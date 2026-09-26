@@ -1215,10 +1215,10 @@ SUMMARY OF CASE DOSSIERS & INTELLIGENCE REPOSITORY
   );
 }
 
+// --- DOCUMENT PREVIEW MODAL ---
 function DocumentPreviewModal({ doc, caseId, onClose }: { doc: any; caseId: string; onClose: () => void }) {
   const [detail, setDetail] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [previewTab, setPreviewTab] = useState<'NATIVE' | 'TEXT'>('NATIVE');
 
   useEffect(() => {
     if (!doc?.id) return;
@@ -1232,14 +1232,9 @@ function DocumentPreviewModal({ doc, caseId, onClose }: { doc: any; caseId: stri
 
   if (!doc) return null;
 
-  const fileUrl = `${api.defaults.baseURL}/cases/${caseId}/documents/${doc.id}/file`;
-  const ext = (doc.file_type || doc.original_name || doc.file_name || '').toLowerCase();
-  const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'].some(e => ext.endsWith(e));
-  const isPdf = ext.endsWith('pdf');
-
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-      <div className="card" style={{ width: '850px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '28px', background: '#fff', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+      <div className="card" style={{ width: '720px', maxWidth: '95vw', maxHeight: '85vh', overflowY: 'auto', padding: '28px', background: '#fff', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 750, color: '#172033' }}>{doc.original_name || doc.file_name}</h2>
@@ -1250,7 +1245,7 @@ function DocumentPreviewModal({ doc, caseId, onClose }: { doc: any; caseId: stri
           </button>
         </div>
 
-        <div className="details-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px', padding: '12px', background: '#f8fafc', borderRadius: '8px' }}>
+        <div className="details-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '20px', padding: '12px', background: '#f8fafc', borderRadius: '8px' }}>
           <div className="detail">
             <span>File Format</span>
             <b style={{ textTransform: 'uppercase' }}>{doc.file_type || 'PDF'}</b>
@@ -1265,60 +1260,10 @@ function DocumentPreviewModal({ doc, caseId, onClose }: { doc: any; caseId: stri
           </div>
         </div>
 
-        {/* VIEW MODE TOGGLE TABS */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
-          <button
-            onClick={() => setPreviewTab('NATIVE')}
-            className={`secondary ${previewTab === 'NATIVE' ? 'active' : ''}`}
-            style={{ fontWeight: 650, fontSize: '13px', background: previewTab === 'NATIVE' ? '#2563eb' : '#f1f5f9', color: previewTab === 'NATIVE' ? '#fff' : '#475569', border: 0, padding: '6px 14px', borderRadius: '6px' }}
-          >
-            📄 Original Document Viewer
-          </button>
-          <button
-            onClick={() => setPreviewTab('TEXT')}
-            className={`secondary ${previewTab === 'TEXT' ? 'active' : ''}`}
-            style={{ fontWeight: 650, fontSize: '13px', background: previewTab === 'TEXT' ? '#2563eb' : '#f1f5f9', color: previewTab === 'TEXT' ? '#fff' : '#475569', border: 0, padding: '6px 14px', borderRadius: '6px' }}
-          >
-            📝 Extracted OCR & AI Text
-          </button>
+        <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#172033', marginBottom: '8px' }}>Extracted Document Content & Summary</h3>
+        <div style={{ background: '#0f172a', color: '#e2e8f0', padding: '16px', borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px', lineHeight: 1.6, maxHeight: '300px', overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+          {loading ? 'Fetching extracted content...' : (detail?.extracted_text || doc.extracted_text || 'No text extracted for this evidence file yet.')}
         </div>
-
-        {previewTab === 'NATIVE' ? (
-          <div style={{ width: '100%', minHeight: '420px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-            {isPdf ? (
-              <iframe
-                src={fileUrl}
-                title="Document PDF Preview"
-                style={{ width: '100%', height: '500px', border: 0 }}
-              />
-            ) : isImage ? (
-              <div style={{ padding: '16px', width: '100%', textAlign: 'center' }}>
-                <img
-                  src={fileUrl}
-                  alt={doc.original_name}
-                  style={{ maxWidth: '100%', maxHeight: '480px', objectFit: 'contain', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                />
-              </div>
-            ) : (
-              <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
-                <p style={{ margin: '0 0 12px', fontSize: '14px' }}>Native browser preview for <b>.{ext}</b> is available via direct download.</p>
-                <button
-                  className="primary"
-                  onClick={() => window.open(fileUrl, '_blank')}
-                >
-                  Open Original Document File 🔗
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div>
-            <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#172033', marginBottom: '8px' }}>Extracted Document Content & Summary</h3>
-            <div style={{ background: '#0f172a', color: '#e2e8f0', padding: '16px', borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px', lineHeight: 1.6, maxHeight: '400px', overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
-              {loading ? 'Fetching extracted content...' : (detail?.extracted_text || doc.extracted_text || 'No text extracted for this evidence file yet.')}
-            </div>
-          </div>
-        )}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '20px' }}>
           <button
@@ -1518,175 +1463,264 @@ function CaseEntitiesSubView({ caseId }: { caseId: string }) {
 
 function CaseNetworkSubView({ caseId }: { caseId: string }) {
   const [graphData, setGraphData] = useState<any>({ nodes: [], edges: [] });
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [selectedNode, setSelectedNode] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get(`/cases/${caseId}/graph`)
-      .then(res => setGraphData(res.data))
-      .catch(() => {});
-  }, [caseId]);
+    setLoading(true);
+    const url = selectedCategory === 'ALL'
+      ? `/cases/${caseId}/graph`
+      : `/cases/${caseId}/graph?entity_types=${selectedCategory}`;
 
-  const nodes = graphData.nodes || [];
+    api.get(url)
+      .then(res => {
+        setGraphData(res.data || { nodes: [], edges: [] });
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [caseId, selectedCategory]);
+
+  const rawNodes = graphData.nodes || [];
   const edges = graphData.edges || [];
 
-  // Calculate circular layout positions for nodes
-  const width = 760;
-  const height = 380;
+  // Filter out any noisy/short nodes if needed
+  const nodes = rawNodes.filter((n: any) => n.label && n.label.trim().length >= 2);
+
+  const width = 800;
+  const height = 440;
   const centerX = width / 2;
   const centerY = height / 2;
-  const radius = Math.min(centerX, centerY) - 70;
+  const radius = Math.min(centerX, centerY) - 80;
 
-  const nodePositions: { [key: string]: { x: number; y: number; label: string; type: string } } = {};
+  const getNodeColor = (typeStr: string) => {
+    const t = (typeStr || '').toUpperCase();
+    if (t.includes('PERSON') || t.includes('SUSPECT')) return '#3b82f6';
+    if (t.includes('ORGANIZATION') || t.includes('COMPANY')) return '#a855f7';
+    if (t.includes('BANK') || t.includes('ACCOUNT')) return '#10b981';
+    if (t.includes('LOCATION') || t.includes('ADDRESS')) return '#f59e0b';
+    if (t.includes('PHONE') || t.includes('CALL')) return '#ec4899';
+    if (t.includes('VEHICLE')) return '#06b6d4';
+    if (t.includes('WEAPON') || t.includes('DRUG')) return '#ef4444';
+    return '#64748b';
+  };
+
+  const nodePositions: { [key: string]: { x: number; y: number; label: string; type: string; raw: any } } = {};
   nodes.forEach((n: any, idx: number) => {
     const angle = (idx / Math.max(nodes.length, 1)) * 2 * Math.PI - Math.PI / 2;
     nodePositions[n.id] = {
       x: centerX + radius * Math.cos(angle),
       y: centerY + radius * Math.sin(angle),
       label: n.label || `Node ${n.id}`,
-      type: n.type || 'ENTITY'
+      type: n.type || 'ENTITY',
+      raw: n
     };
   });
 
+  const categories = ['ALL', 'PERSON', 'ORGANIZATION', 'LOCATION', 'BANK_ACCOUNT', 'PHONE', 'VEHICLE', 'OBJECT'];
+
   return (
-    <div className="card" style={{ padding: '24px', minHeight: '450px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+    <div className="card" style={{ padding: '24px', minHeight: '520px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 750, color: '#172033' }}>Entity-Relationship Intelligence Graph</h2>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 750, color: '#172033' }}>Interactive Link & Entity Intelligence Graph</h2>
           <p style={{ fontSize: '13px', color: '#5b6577', margin: '4px 0 0' }}>
-            Showing {nodes.length} extracted nodes and {edges.length} interconnected relationship edges across case evidence.
+            Showing {nodes.length} filtered intelligence nodes & {edges.length} extracted relationships.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '12px', fontSize: '11px', fontWeight: 650 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#2563eb' }}>● Suspect / Person</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#059669' }}>● Bank / Account</span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#d97706' }}>● Location / Asset</span>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          {categories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`type-pill ${selectedCategory === cat ? 'selected' : ''}`}
+              style={{
+                cursor: 'pointer',
+                border: '1px solid #d8e0ea',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                fontSize: '11px',
+                fontWeight: 650,
+                background: selectedCategory === cat ? '#1e293b' : '#fff',
+                color: selectedCategory === cat ? '#fff' : '#64748b'
+              }}
+            >
+              {cat}
+            </button>
+          ))}
         </div>
       </div>
 
-      {nodes.length === 0 ? (
-        <div style={{ background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: '10px', height: '320px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+      {loading ? (
+        <div style={{ background: '#0f172a', borderRadius: '12px', height: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+          Loading Intelligence Graph...
+        </div>
+      ) : nodes.length === 0 ? (
+        <div style={{ background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: '10px', height: '360px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
           <Share2 size={36} color="#94a3b8" />
-          <b style={{ color: '#64748b' }}>No Graph Links Extracted Yet</b>
-          <span style={{ fontSize: '12px', color: '#94a3b8' }}>Upload evidence files under the 'Documents' tab to construct the suspect entity graph.</span>
+          <b style={{ color: '#64748b' }}>No {selectedCategory !== 'ALL' ? selectedCategory : ''} Entities Found</b>
+          <span style={{ fontSize: '12px', color: '#94a3b8' }}>Upload evidence files under the 'Documents' tab to auto-extract entities and link analysis.</span>
         </div>
       ) : (
-        <div style={{ background: '#0f172a', borderRadius: '12px', padding: '16px', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}>
-          <svg width={width} height={height} style={{ width: '100%', maxWidth: `${width}px` }}>
-            {/* Draw connecting edge lines */}
-            {edges.map((edge: any, idx: number) => {
-              const src = nodePositions[edge.source];
-              const tgt = nodePositions[edge.target];
-              if (!src || !tgt) return null;
-              const midX = (src.x + tgt.x) / 2;
-              const midY = (src.y + tgt.y) / 2;
-              return (
-                <g key={`edge-${idx}`}>
+        <div style={{ display: 'grid', gridTemplateColumns: selectedNode ? '1fr 300px' : '1fr', gap: '16px' }}>
+          <div style={{ background: '#0f172a', borderRadius: '12px', padding: '16px', overflowX: 'auto', display: 'flex', justifyContent: 'center', position: 'relative' }}>
+            <svg width={width} height={height} style={{ width: '100%', maxWidth: `${width}px` }}>
+              {/* Draw edge connection lines */}
+              {edges.map((edge: any, idx: number) => {
+                const src = nodePositions[edge.source];
+                const tgt = nodePositions[edge.target];
+                if (!src || !tgt) return null;
+                const isHighlighted = selectedNode && (selectedNode.id === edge.source || selectedNode.id === edge.target);
+                const midX = (src.x + tgt.x) / 2;
+                const midY = (src.y + tgt.y) / 2;
+                return (
+                  <g key={`edge-${idx}`}>
+                    <line
+                      x1={src.x}
+                      y1={src.y}
+                      x2={tgt.x}
+                      y2={tgt.y}
+                      stroke={isHighlighted ? '#38bdf8' : '#334155'}
+                      strokeWidth={isHighlighted ? '3' : '2'}
+                      strokeDasharray={isHighlighted ? '0' : '4 2'}
+                    />
+                    <rect
+                      x={midX - 35}
+                      y={midY - 10}
+                      width="70"
+                      height="18"
+                      rx="4"
+                      fill="#1e293b"
+                      stroke={isHighlighted ? '#38bdf8' : '#475569'}
+                      strokeWidth="1"
+                    />
+                    <text
+                      x={midX}
+                      y={midY + 3}
+                      fill={isHighlighted ? '#38bdf8' : '#94a3b8'}
+                      fontSize="9"
+                      fontWeight="600"
+                      textAnchor="middle"
+                    >
+                      {edge.type || edge.label || 'LINKED'}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {/* Fallback connection ring if no edges exist */}
+              {edges.length === 0 && nodes.map((n: any, idx: number) => {
+                const nextIdx = (idx + 1) % nodes.length;
+                const src = nodePositions[n.id];
+                const tgt = nodePositions[nodes[nextIdx].id];
+                if (!src || !tgt) return null;
+                return (
                   <line
+                    key={`fallback-edge-${idx}`}
                     x1={src.x}
                     y1={src.y}
                     x2={tgt.x}
                     y2={tgt.y}
-                    stroke="#3b82f6"
-                    strokeWidth="2"
-                    strokeDasharray="4 2"
+                    stroke="#334155"
+                    strokeWidth="1.5"
+                    strokeDasharray="4 4"
                   />
-                  <rect
-                    x={midX - 35}
-                    y={midY - 10}
-                    width="70"
-                    height="18"
-                    rx="4"
-                    fill="#1e293b"
-                    stroke="#475569"
-                    strokeWidth="1"
-                  />
-                  <text
-                    x={midX}
-                    y={midY + 3}
-                    fill="#94a3b8"
-                    fontSize="9"
-                    fontWeight="600"
-                    textAnchor="middle"
-                  >
-                    {edge.type || edge.label || 'LINKED'}
-                  </text>
-                </g>
-              );
-            })}
+                );
+              })}
 
-            {/* Fallback lines connecting all nodes if edges list is empty */}
-            {edges.length === 0 && nodes.map((n: any, idx: number) => {
-              const nextIdx = (idx + 1) % nodes.length;
-              const src = nodePositions[n.id];
-              const tgt = nodePositions[nodes[nextIdx].id];
-              if (!src || !tgt) return null;
-              return (
-                <line
-                  key={`fallback-edge-${idx}`}
-                  x1={src.x}
-                  y1={src.y}
-                  x2={tgt.x}
-                  y2={tgt.y}
-                  stroke="#38bdf8"
-                  strokeWidth="2"
-                  strokeOpacity="0.6"
-                />
-              );
-            })}
+              {/* Render Nodes */}
+              {nodes.map((n: any) => {
+                const pos = nodePositions[n.id];
+                if (!pos) return null;
+                const isSelected = selectedNode && selectedNode.id === n.id;
+                const color = getNodeColor(n.type);
 
-            {/* Draw entity node circles and text badges */}
-            {nodes.map((n: any) => {
-              const pos = nodePositions[n.id];
-              if (!pos) return null;
-              const isPerson = (n.type || '').toUpperCase().includes('PERSON') || (n.type || '').toUpperCase().includes('SUSPECT');
-              const isBank = (n.type || '').toUpperCase().includes('BANK') || (n.type || '').toUpperCase().includes('ACCOUNT');
-              const nodeColor = isPerson ? '#2563eb' : isBank ? '#059669' : '#d97706';
+                return (
+                  <g
+                    key={`node-${n.id}`}
+                    onClick={() => setSelectedNode(isSelected ? null : n)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <circle
+                      cx={pos.x}
+                      cy={pos.y}
+                      r={isSelected ? '28' : '24'}
+                      fill={color}
+                      stroke={isSelected ? '#ffffff' : color}
+                      strokeWidth={isSelected ? '4' : '2'}
+                      style={{ filter: isSelected ? 'drop-shadow(0 0 12px rgba(56, 189, 248, 0.8))' : 'drop-shadow(0 4px 6px rgba(0,0,0,0.4))' }}
+                    />
+                    <text
+                      x={pos.x}
+                      y={pos.y + 4}
+                      fill="#ffffff"
+                      fontSize="10"
+                      fontWeight="750"
+                      textAnchor="middle"
+                    >
+                      {(pos.label || 'Node').slice(0, 4).toUpperCase()}
+                    </text>
 
-              return (
-                <g key={`node-${n.id}`} style={{ cursor: 'pointer' }}>
-                  <circle
-                    cx={pos.x}
-                    cy={pos.y}
-                    r="24"
-                    fill={nodeColor}
-                    stroke="#ffffff"
-                    strokeWidth="3"
-                    style={{ filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))' }}
-                  />
-                  <text
-                    x={pos.x}
-                    y={pos.y + 4}
-                    fill="#ffffff"
-                    fontSize="10"
-                    fontWeight="700"
-                    textAnchor="middle"
-                  >
-                    {(n.label || 'Node').slice(0, 4).toUpperCase()}
-                  </text>
-                  {/* Label badge under circle */}
-                  <rect
-                    x={pos.x - 50}
-                    y={pos.y + 30}
-                    width="100"
-                    height="20"
-                    rx="4"
-                    fill="#1e293b"
-                    stroke={nodeColor}
-                    strokeWidth="1"
-                  />
-                  <text
-                    x={pos.x}
-                    y={pos.y + 43}
-                    fill="#f8fafc"
-                    fontSize="10"
-                    fontWeight="600"
-                    textAnchor="middle"
-                  >
-                    {pos.label.length > 14 ? pos.label.slice(0, 12) + '..' : pos.label}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
+                    {/* Label Badge */}
+                    <rect
+                      x={pos.x - 55}
+                      y={pos.y + 30}
+                      width="110"
+                      height="22"
+                      rx="4"
+                      fill="#1e293b"
+                      stroke={isSelected ? '#38bdf8' : color}
+                      strokeWidth="1.5"
+                    />
+                    <text
+                      x={pos.x}
+                      y={pos.y + 44}
+                      fill="#f8fafc"
+                      fontSize="10"
+                      fontWeight="650"
+                      textAnchor="middle"
+                    >
+                      {pos.label.length > 15 ? pos.label.slice(0, 13) + '..' : pos.label}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+
+          {/* Node Inspector Side Panel */}
+          {selectedNode && (
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <b style={{ fontSize: '14px', color: '#172033' }}>Entity Intelligence Inspector</b>
+                <button onClick={() => setSelectedNode(null)} style={{ border: 0, background: 'none', color: '#64748b', cursor: 'pointer' }}>✕</button>
+              </div>
+
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}>
+                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 650 }}>ENTITY NAME</div>
+                <div style={{ fontSize: '14px', fontWeight: 750, color: '#1e293b', marginTop: '2px' }}>{selectedNode.label}</div>
+
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <span className="type-pill" style={{ background: getNodeColor(selectedNode.type), color: '#fff' }}>
+                    {selectedNode.type}
+                  </span>
+                  <span className="type-pill" style={{ background: '#e2e8f0', color: '#334155' }}>
+                    {selectedNode.mention_count || 1} Mentions
+                  </span>
+                </div>
+              </div>
+
+              {selectedNode.metadata && (
+                <div style={{ fontSize: '12px', color: '#475569', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 650, color: '#64748b', marginBottom: '4px' }}>CONFIDENCE & METADATA</div>
+                  <div>Confidence: <b>{Math.round((selectedNode.metadata.confidence || 0.9) * 100)}%</b></div>
+                  {selectedNode.metadata.normalized && (
+                    <div style={{ wordBreak: 'break-all', marginTop: '4px' }}>Normalized: <code>{selectedNode.metadata.normalized}</code></div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
