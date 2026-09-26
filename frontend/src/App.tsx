@@ -1538,6 +1538,18 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
   const [selectedNode, setSelectedNode] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // 3D & Gesture Interaction States
+  const [rotX, setRotX] = useState<number>(0.2);
+  const [rotY, setRotY] = useState<number>(0.4);
+  const [zoom, setZoom] = useState<number>(1.0);
+  const [autoRotate, setAutoRotate] = useState<boolean>(true);
+
+  // Drag & Touch tracking refs
+  const isDragging = useRef<boolean>(false);
+  const dragStart = useRef<{ x: number; y: number; rotX: number; rotY: number }>({ x: 0, y: 0, rotX: 0, rotY: 0 });
+  const hasMoved = useRef<boolean>(false);
+  const pinchDist = useRef<number | null>(null);
+
   useEffect(() => {
     setLoading(true);
     const url = selectedCategory === 'ALL'
@@ -1552,17 +1564,26 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
       .catch(() => setLoading(false));
   }, [caseId, selectedCategory]);
 
+  // Auto rotation frame loop
+  useEffect(() => {
+    if (!autoRotate) return;
+    const interval = setInterval(() => {
+      if (!isDragging.current) {
+        setRotY(prev => prev + 0.006);
+      }
+    }, 30);
+    return () => clearInterval(interval);
+  }, [autoRotate]);
+
   const rawNodes = graphData.nodes || [];
   const edges = graphData.edges || [];
-
-  // Filter out any noisy/short nodes if needed
   const nodes = rawNodes.filter((n: any) => n.label && n.label.trim().length >= 2);
 
   const width = 800;
-  const height = 440;
+  const height = 480;
   const centerX = width / 2;
   const centerY = height / 2;
-  const radius = Math.min(centerX, centerY) - 80;
+  const radius = 180;
 
   const getNodeColor = (typeStr: string) => {
     const t = (typeStr || '').toUpperCase();
@@ -1576,30 +1597,144 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
     return '#64748b';
   };
 
-  const nodePositions: { [key: string]: { x: number; y: number; label: string; type: string; raw: any } } = {};
+  // 1. Assign 3D Spherical Coordinates (x, y, z) using Fibonacci Sphere distribution
+  const raw3DNodes: { [key: string]: { x: number; y: number; z: number; label: string; type: string; raw: any } } = {};
+  const numNodes = Math.max(nodes.length, 1);
+  const phi = Math.PI * (3 - Math.sqrt(5)); // Golden angle in radians
+
   nodes.forEach((n: any, idx: number) => {
-    const angle = (idx / Math.max(nodes.length, 1)) * 2 * Math.PI - Math.PI / 2;
-    nodePositions[n.id] = {
-      x: centerX + radius * Math.cos(angle),
-      y: centerY + radius * Math.sin(angle),
+    const y = 1 - (idx / Math.max(numNodes - 1, 1)) * 2; // y goes from 1 to -1
+    const radiusAtY = Math.sqrt(Math.max(0, 1 - y * y)); // radius at y
+    const theta = phi * idx; // golden angle increment
+
+    const x = Math.cos(theta) * radiusAtY;
+    const z = Math.sin(theta) * radiusAtY;
+
+    raw3DNodes[n.id] = {
+      x: x * radius,
+      y: y * radius,
+      z: z * radius,
       label: n.label || `Node ${n.id}`,
       type: n.type || 'ENTITY',
       raw: n
     };
   });
 
+  // 2. Apply 3D Rotation Matrix & Perspective Projection
+  const projectedNodes: { [key: string]: { id: string; projX: number; projY: number; scale: number; zDepth: number; label: string; type: string; raw: any } } = {};
+
+  const cosY = Math.cos(rotY);
+  const sinY = Math.sin(rotY);
+  const cosX = Math.cos(rotX);
+  const sinX = Math.sin(rotX);
+  const fov = 450 * zoom;
+
+  nodes.forEach((n: any) => {
+    const raw3D = raw3DNodes[n.id];
+    if (!raw3D) return;
+
+    // Rotate around Y axis
+    const x1 = raw3D.x * cosY + raw3D.z * sinY;
+    const z1 = -raw3D.x * sinY + raw3D.z * cosY;
+
+    // Rotate around X axis
+    const y2 = raw3D.y * cosX - z1 * sinX;
+    const z2 = raw3D.y * sinX + z1 * cosX;
+
+    // Perspective scale calculation
+    const cameraDist = 400;
+    const scale = fov / (cameraDist + z2);
+
+    projectedNodes[n.id] = {
+      id: n.id,
+      projX: centerX + x1 * scale,
+      projY: centerY + y2 * scale,
+      scale,
+      zDepth: z2, // higher zDepth = farther away
+      label: raw3D.label,
+      type: raw3D.type,
+      raw: n
+    };
+  });
+
+  // 3. Depth Sorting: Sort nodes from farthest to nearest so front nodes render on top
+  const sortedNodeList = Object.values(projectedNodes).sort((a, b) => b.zDepth - a.zDepth);
+
+  // Mouse & Touch Gesture Handlers
+  const handleStart = (clientX: number, clientY: number) => {
+    isDragging.current = true;
+    hasMoved.current = false;
+    dragStart.current = { x: clientX, y: clientY, rotX, rotY };
+  };
+
+  const handleMove = (clientX: number, clientY: number) => {
+    if (!isDragging.current) return;
+    const dx = clientX - dragStart.current.x;
+    const dy = clientY - dragStart.current.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      hasMoved.current = true;
+    }
+    setRotY(dragStart.current.rotY + dx * 0.008);
+    setRotX(Math.max(-Math.PI / 2, Math.min(Math.PI / 2, dragStart.current.rotX - dy * 0.008)));
+  };
+
+  const handleEnd = () => {
+    isDragging.current = false;
+    pinchDist.current = null;
+  };
+
+  // Touch Handlers for Mobile & Tablet (Rotation + Pinch-Zoom)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      handleStart(e.touches[0].clientX, e.touches[0].clientY);
+    } else if (e.touches.length === 2) {
+      isDragging.current = false;
+      const d = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      pinchDist.current = d;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      handleMove(e.touches[0].clientX, e.touches[0].clientY);
+    } else if (e.touches.length === 2 && pinchDist.current !== null) {
+      const d = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const delta = d - pinchDist.current;
+      setZoom(prev => Math.max(0.5, Math.min(2.5, prev + delta * 0.005)));
+      pinchDist.current = d;
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.08 : 0.08;
+    setZoom(prev => Math.max(0.5, Math.min(2.5, prev + delta)));
+  };
+
   const categories = ['ALL', 'PERSON', 'ORGANIZATION', 'LOCATION', 'BANK_ACCOUNT', 'PHONE', 'VEHICLE', 'OBJECT'];
 
   return (
     <div className="card" style={{ padding: '24px', minHeight: '520px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+      {/* Header Toolbar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 750, color: '#172033' }}>Interactive Link & Entity Intelligence Graph</h2>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 750, color: '#172033', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>3D Interactive Link & Entity Intelligence Graph</span>
+            <span style={{ fontSize: '11px', background: '#3b82f6', color: '#fff', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+              TOUCH 3D
+            </span>
+          </h2>
           <p style={{ fontSize: '13px', color: '#5b6577', margin: '4px 0 0' }}>
-            Showing {nodes.length} filtered intelligence nodes & {edges.length} extracted relationships.
+            Showing {nodes.length} filtered intelligence nodes & {edges.length} extracted 3D relationships.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           {categories.map(cat => (
             <button
               key={cat}
@@ -1623,8 +1758,8 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
       </div>
 
       {loading ? (
-        <div style={{ background: '#0f172a', borderRadius: '12px', height: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-          Loading Intelligence Graph...
+        <div style={{ background: '#0f172a', borderRadius: '12px', height: '420px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+          Initializing 3D Intelligence Matrix...
         </div>
       ) : nodes.length === 0 ? (
         <div style={{ background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: '10px', height: '360px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
@@ -1634,124 +1769,210 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: selectedNode ? '1fr 300px' : '1fr', gap: '16px' }}>
-          <div style={{ background: '#0f172a', borderRadius: '12px', padding: '16px', overflowX: 'auto', display: 'flex', justifyContent: 'center', position: 'relative' }}>
-            <svg width={width} height={height} style={{ width: '100%', maxWidth: `${width}px` }}>
-              {/* Draw edge connection lines */}
+          {/* 3D Touch-Responsive Graph Viewport */}
+          <div
+            style={{
+              background: 'radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%)',
+              borderRadius: '12px',
+              padding: '12px',
+              position: 'relative',
+              overflow: 'hidden',
+              touchAction: 'none',
+              userSelect: 'none',
+              cursor: isDragging.current ? 'grabbing' : 'grab'
+            }}
+            onMouseDown={(e) => handleStart(e.clientX, e.clientY)}
+            onMouseMove={(e) => handleMove(e.clientX, e.clientY)}
+            onMouseUp={handleEnd}
+            onMouseLeave={handleEnd}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleEnd}
+            onWheel={handleWheel}
+          >
+            {/* Control Floating Toolbar */}
+            <div style={{ position: 'absolute', top: '16px', right: '16px', zIndex: 10, display: 'flex', gap: '6px', background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(8px)', padding: '6px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <button
+                onClick={(e) => { e.stopPropagation(); setZoom(prev => Math.min(2.5, prev + 0.2)); }}
+                style={{ background: '#334155', color: '#fff', border: 0, width: '28px', height: '28px', borderRadius: '4px', cursor: 'pointer', fontWeight: 700 }}
+                title="Zoom In"
+              >
+                +
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setZoom(prev => Math.max(0.5, prev - 0.2)); }}
+                style={{ background: '#334155', color: '#fff', border: 0, width: '28px', height: '28px', borderRadius: '4px', cursor: 'pointer', fontWeight: 700 }}
+                title="Zoom Out"
+              >
+                -
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setAutoRotate(!autoRotate); }}
+                style={{ background: autoRotate ? '#2563eb' : '#334155', color: '#fff', border: 0, padding: '0 8px', height: '28px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 650 }}
+                title="Toggle Auto Rotation"
+              >
+                {autoRotate ? 'Auto 3D 🔄' : 'Paused ⏸'}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setRotX(0.2); setRotY(0.4); setZoom(1.0); }}
+                style={{ background: '#334155', color: '#94a3b8', border: 0, padding: '0 8px', height: '28px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}
+                title="Reset View"
+              >
+                Reset
+              </button>
+            </div>
+
+            {/* Gesture Guide Hint */}
+            <div style={{ position: 'absolute', bottom: '16px', left: '16px', zIndex: 10, background: 'rgba(15, 23, 42, 0.75)', color: '#94a3b8', fontSize: '11px', padding: '4px 10px', borderRadius: '6px', pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.08)' }}>
+              📱 Drag/Touch to rotate 3D • Pinch/Scroll to zoom • Tap node to inspect
+            </div>
+
+            <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+              <defs>
+                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="4" result="blur" />
+                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
+              </defs>
+
+              {/* Render 3D Edges */}
               {edges.map((edge: any, idx: number) => {
-                const src = nodePositions[edge.source];
-                const tgt = nodePositions[edge.target];
+                const src = projectedNodes[edge.source];
+                const tgt = projectedNodes[edge.target];
                 if (!src || !tgt) return null;
+
                 const isHighlighted = selectedNode && (selectedNode.id === edge.source || selectedNode.id === edge.target);
-                const midX = (src.x + tgt.x) / 2;
-                const midY = (src.y + tgt.y) / 2;
+                const avgZ = (src.zDepth + tgt.zDepth) / 2;
+                const edgeOpacity = Math.max(0.15, Math.min(0.9, (250 - avgZ) / 350));
+                const midX = (src.projX + tgt.projX) / 2;
+                const midY = (src.projY + tgt.projY) / 2;
+
                 return (
-                  <g key={`edge-${idx}`}>
+                  <g key={`edge-${idx}`} style={{ opacity: edgeOpacity }}>
                     <line
-                      x1={src.x}
-                      y1={src.y}
-                      x2={tgt.x}
-                      y2={tgt.y}
-                      stroke={isHighlighted ? '#38bdf8' : '#334155'}
-                      strokeWidth={isHighlighted ? '3' : '2'}
-                      strokeDasharray={isHighlighted ? '0' : '4 2'}
-                    />
-                    <rect
-                      x={midX - 35}
-                      y={midY - 10}
-                      width="70"
-                      height="18"
-                      rx="4"
-                      fill="#1e293b"
+                      x1={src.projX}
+                      y1={src.projY}
+                      x2={tgt.projX}
+                      y2={tgt.projY}
                       stroke={isHighlighted ? '#38bdf8' : '#475569'}
-                      strokeWidth="1"
+                      strokeWidth={isHighlighted ? 3 * Math.min(src.scale, tgt.scale) : 1.5 * Math.min(src.scale, tgt.scale)}
+                      strokeDasharray={isHighlighted ? '0' : '4 3'}
                     />
-                    <text
-                      x={midX}
-                      y={midY + 3}
-                      fill={isHighlighted ? '#38bdf8' : '#94a3b8'}
-                      fontSize="9"
-                      fontWeight="600"
-                      textAnchor="middle"
-                    >
-                      {edge.type || edge.label || 'LINKED'}
-                    </text>
+                    {isHighlighted && (
+                      <g>
+                        <rect
+                          x={midX - 35}
+                          y={midY - 10}
+                          width="70"
+                          height="18"
+                          rx="4"
+                          fill="#0f172a"
+                          stroke="#38bdf8"
+                          strokeWidth="1"
+                        />
+                        <text
+                          x={midX}
+                          y={midY + 3}
+                          fill="#38bdf8"
+                          fontSize="9"
+                          fontWeight="700"
+                          textAnchor="middle"
+                        >
+                          {edge.type || edge.label || 'LINKED'}
+                        </text>
+                      </g>
+                    )}
                   </g>
                 );
               })}
 
-              {/* Fallback connection ring if no edges exist */}
+              {/* Fallback 3D Ring Edges if no edges exist */}
               {edges.length === 0 && nodes.map((n: any, idx: number) => {
                 const nextIdx = (idx + 1) % nodes.length;
-                const src = nodePositions[n.id];
-                const tgt = nodePositions[nodes[nextIdx].id];
+                const src = projectedNodes[n.id];
+                const tgt = projectedNodes[nodes[nextIdx].id];
                 if (!src || !tgt) return null;
+                const avgZ = (src.zDepth + tgt.zDepth) / 2;
+                const edgeOpacity = Math.max(0.1, Math.min(0.6, (250 - avgZ) / 350));
                 return (
                   <line
                     key={`fallback-edge-${idx}`}
-                    x1={src.x}
-                    y1={src.y}
-                    x2={tgt.x}
-                    y2={tgt.y}
+                    x1={src.projX}
+                    y1={src.projY}
+                    x2={tgt.projX}
+                    y2={tgt.projY}
                     stroke="#334155"
-                    strokeWidth="1.5"
+                    strokeWidth={1.2 * Math.min(src.scale, tgt.scale)}
                     strokeDasharray="4 4"
+                    opacity={edgeOpacity}
                   />
                 );
               })}
 
-              {/* Render Nodes */}
-              {nodes.map((n: any) => {
-                const pos = nodePositions[n.id];
-                if (!pos) return null;
-                const isSelected = selectedNode && selectedNode.id === n.id;
-                const color = getNodeColor(n.type);
+              {/* Render Depth-Sorted 3D Nodes */}
+              {sortedNodeList.map((pos) => {
+                const isSelected = selectedNode && selectedNode.id === pos.id;
+                const color = getNodeColor(pos.type);
+                const nodeRadius = (isSelected ? 26 : 20) * pos.scale;
+                const opacity = Math.max(0.35, Math.min(1.0, (300 - pos.zDepth) / 350));
 
                 return (
                   <g
-                    key={`node-${n.id}`}
-                    onClick={() => setSelectedNode(isSelected ? null : n)}
-                    style={{ cursor: 'pointer' }}
+                    key={`node-${pos.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!hasMoved.current) {
+                        setSelectedNode(isSelected ? null : pos.raw);
+                      }
+                    }}
+                    style={{ cursor: 'pointer', opacity }}
                   >
+                    {/* Glow effect for front/selected nodes */}
                     <circle
-                      cx={pos.x}
-                      cy={pos.y}
-                      r={isSelected ? '28' : '24'}
+                      cx={pos.projX}
+                      cy={pos.projY}
+                      r={nodeRadius}
                       fill={color}
                       stroke={isSelected ? '#ffffff' : color}
-                      strokeWidth={isSelected ? '4' : '2'}
-                      style={{ filter: isSelected ? 'drop-shadow(0 0 12px rgba(56, 189, 248, 0.8))' : 'drop-shadow(0 4px 6px rgba(0,0,0,0.4))' }}
+                      strokeWidth={isSelected ? 3 * pos.scale : 1.5 * pos.scale}
+                      filter={pos.zDepth < 0 || isSelected ? 'url(#glow)' : undefined}
                     />
+
+                    {/* Node Initials */}
                     <text
-                      x={pos.x}
-                      y={pos.y + 4}
+                      x={pos.projX}
+                      y={pos.projY + 4 * pos.scale}
                       fill="#ffffff"
-                      fontSize="10"
+                      fontSize={Math.max(8, 10 * pos.scale)}
                       fontWeight="750"
                       textAnchor="middle"
+                      pointerEvents="none"
                     >
-                      {(pos.label || 'Node').slice(0, 4).toUpperCase()}
+                      {(pos.label || 'Node').slice(0, 3).toUpperCase()}
                     </text>
 
-                    {/* Label Badge */}
+                    {/* 3D Label Tag */}
                     <rect
-                      x={pos.x - 55}
-                      y={pos.y + 30}
-                      width="110"
-                      height="22"
-                      rx="4"
-                      fill="#1e293b"
+                      x={pos.projX - 50 * pos.scale}
+                      y={pos.projY + (nodeRadius + 6)}
+                      width={100 * pos.scale}
+                      height={20 * pos.scale}
+                      rx={4 * pos.scale}
+                      fill="#0f172a"
                       stroke={isSelected ? '#38bdf8' : color}
-                      strokeWidth="1.5"
+                      strokeWidth={1.5 * pos.scale}
+                      opacity={0.9}
                     />
                     <text
-                      x={pos.x}
-                      y={pos.y + 44}
+                      x={pos.projX}
+                      y={pos.projY + (nodeRadius + 6) + 13 * pos.scale}
                       fill="#f8fafc"
-                      fontSize="10"
+                      fontSize={Math.max(8, 9.5 * pos.scale)}
                       fontWeight="650"
                       textAnchor="middle"
+                      pointerEvents="none"
                     >
-                      {pos.label.length > 15 ? pos.label.slice(0, 13) + '..' : pos.label}
+                      {pos.label.length > 14 ? pos.label.slice(0, 12) + '..' : pos.label}
                     </text>
                   </g>
                 );
@@ -1764,7 +1985,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
             <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <b style={{ fontSize: '14px', color: '#172033' }}>Entity Intelligence Inspector</b>
-                <button onClick={() => setSelectedNode(null)} style={{ border: 0, background: 'none', color: '#64748b', cursor: 'pointer' }}>✕</button>
+                <button onClick={() => setSelectedNode(null)} style={{ border: 0, background: 'none', color: '#64748b', cursor: 'pointer', fontSize: '16px' }}>✕</button>
               </div>
 
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px' }}>
