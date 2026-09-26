@@ -1027,9 +1027,80 @@ function CaseRelatedSubView() {
   );
 }
 
+function renderFormattedInline(text: string) {
+  if (!text) return null;
+  const parts = text.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`|<u>.*?<\/u>)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} style={{ fontWeight: 750, color: '#0f172a' }}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith('*') && part.endsWith('*')) {
+      return <em key={i} style={{ fontStyle: 'italic', color: '#475569' }}>{part.slice(1, -1)}</em>;
+    }
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return <code key={i} style={{ background: '#e2e8f0', padding: '1px 5px', borderRadius: '4px', fontSize: '12px', fontFamily: 'monospace' }}>{part.slice(1, -1)}</code>;
+    }
+    if (part.startsWith('<u>') && part.endsWith('</u>')) {
+      return <u key={i} style={{ textDecoration: 'underline' }}>{part.slice(3, -4)}</u>;
+    }
+    return part;
+  });
+}
+
+function FormattedMarkdown({ text }: { text: string }) {
+  if (!text) return null;
+  const lines = text.split('\n');
+
+  return (
+    <div style={{ lineHeight: 1.6, fontSize: '13px' }}>
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) return <div key={idx} style={{ height: '6px' }} />;
+
+        if (trimmed.startsWith('### ')) {
+          return (
+            <h4 key={idx} style={{ margin: '10px 0 4px', fontSize: '14px', fontWeight: 750, color: '#0f172a', borderBottom: '1px solid #e2e8f0', paddingBottom: '3px' }}>
+              {renderFormattedInline(trimmed.replace('### ', ''))}
+            </h4>
+          );
+        }
+        if (trimmed.startsWith('## ')) {
+          return (
+            <h3 key={idx} style={{ margin: '12px 0 4px', fontSize: '15px', fontWeight: 800, color: '#0f172a' }}>
+              {renderFormattedInline(trimmed.replace('## ', ''))}
+            </h3>
+          );
+        }
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+          return (
+            <div key={idx} style={{ display: 'flex', gap: '6px', marginLeft: '6px', margin: '2px 0' }}>
+              <span style={{ color: '#2563eb', fontWeight: 800 }}>•</span>
+              <div>{renderFormattedInline(trimmed.substring(2))}</div>
+            </div>
+          );
+        }
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
+        if (numMatch) {
+          return (
+            <div key={idx} style={{ display: 'flex', gap: '6px', marginLeft: '6px', margin: '2px 0' }}>
+              <span style={{ color: '#2563eb', fontWeight: 750 }}>{numMatch[1]}.</span>
+              <div>{renderFormattedInline(numMatch[2])}</div>
+            </div>
+          );
+        }
+        return (
+          <div key={idx} style={{ margin: '2px 0' }}>
+            {renderFormattedInline(line)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function CaseAiAssistantSubView({ caseId }: { caseId: string }) {
   const [messages, setMessages] = useState<any[]>([
-    { role: 'ASSISTANT', content: 'Greetings Investigator. I am your Evidence-Grounded AI Assistant. Ask me anything regarding documents, wire transfers, or suspect connections in this case dossier.' }
+    { role: 'ASSISTANT', content: '### Evidence-Grounded Assistant initialized.\nGreetings Investigator. I am your **AI Intelligence Assistant**. Ask me anything regarding *bank statements*, *wire transfers*, or *suspect entity connections*.' }
   ]);
   const [inputMsg, setInputMsg] = useState('');
   const [sending, setSending] = useState(false);
@@ -1049,7 +1120,7 @@ function CaseAiAssistantSubView({ caseId }: { caseId: string }) {
       setMessages(prev => [...prev, { role: 'ASSISTANT', content: res.data.answer, sources: res.data.sources }]);
     } catch (err) {
       setSending(false);
-      setMessages(prev => [...prev, { role: 'ASSISTANT', content: 'Analyzed case records: Please upload evidence files to query AI RAG index.' }]);
+      setMessages(prev => [...prev, { role: 'ASSISTANT', content: '### System Notification\nPlease upload evidence files under Documents tab to query the neural vector index.' }]);
     }
   };
 
@@ -1069,7 +1140,7 @@ function CaseAiAssistantSubView({ caseId }: { caseId: string }) {
         {messages.map((m, idx) => (
           <div key={idx} style={{ alignSelf: m.role === 'USER' ? 'flex-end' : 'flex-start', maxWidth: '80%', background: m.role === 'USER' ? '#2563eb' : '#fff', color: m.role === 'USER' ? '#fff' : '#172033', padding: '12px 16px', borderRadius: '10px', border: m.role === 'USER' ? '0' : '1px solid #e3e8ef', fontSize: '13px', lineHeight: 1.5 }}>
             <b>{m.role === 'USER' ? 'You' : 'AI Investigation Engine'}:</b>
-            <div style={{ marginTop: '4px' }}>{m.content}</div>
+            <div style={{ marginTop: '4px' }}><FormattedMarkdown text={m.content} /></div>
             {m.sources && m.sources.length > 0 && (
               <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e2e8f0', fontSize: '11px', color: '#64748b' }}>
                 <b>Sources Referenced:</b>
