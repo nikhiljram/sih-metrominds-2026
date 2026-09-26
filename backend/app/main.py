@@ -46,10 +46,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
+allowed_origins = [
+    "https://sih-metrominds-2026.vercel.app",
+    "https://investigation-proj-sih26.vercel.app",
+    settings.FRONTEND_URL,
+    "http://localhost:5173",
+    "http://localhost:3000"
+]
+
+# Clean up duplicates & empty strings
+allowed_origins = list(set([o for o in allowed_origins if o]))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
