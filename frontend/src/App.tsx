@@ -1539,151 +1539,30 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
   const [selectedEdge, setSelectedEdge] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // 3D & Gesture Interaction States
-  const [rotX, setRotX] = useState<number>(0.2);
-  const [rotY, setRotY] = useState<number>(0.4);
+  // 2D Pan & Zoom States
   const [zoom, setZoom] = useState<number>(1.0);
-  const [autoRotate, setAutoRotate] = useState<boolean>(false);
+  const [panX, setPanX] = useState<number>(0);
+  const [panY, setPanY] = useState<number>(0);
 
-  // Computed 3D force layout positions: id -> {x, y, z}
-  const [nodePositions3D, setNodePositions3D] = useState<{ [key: string]: { x: number; y: number; z: number } }>({});
+  // Computed 2D force layout positions: id -> { x, y }
+  const [nodePositions2D, setNodePositions2D] = useState<{ [key: string]: { x: number; y: number } }>({});
 
-  // Drag & Touch tracking refs
+  // Drag tracking refs
   const isDragging = useRef<boolean>(false);
-  const dragStart = useRef<{ x: number; y: number; rotX: number; rotY: number }>({ x: 0, y: 0, rotX: 0, rotY: 0 });
+  const dragStart = useRef<{ x: number; y: number; initPanX: number; initPanY: number }>({ x: 0, y: 0, initPanX: 0, initPanY: 0 });
   const hasMoved = useRef<boolean>(false);
-  const pinchDist = useRef<number | null>(null);
 
-  useEffect(() => {
-    setLoading(true);
-    const url = selectedCategory === 'ALL'
-      ? `/cases/${caseId}/graph`
-      : `/cases/${caseId}/graph?entity_types=${selectedCategory}`;
-
-    api.get(url)
-      .then(res => {
-        const data = res.data || { nodes: [], edges: [] };
-        setGraphData(data);
-        compute3DForceLayout(data.nodes || [], data.edges || []);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, [caseId, selectedCategory]);
-
-  // AI-Assisted 3D Force-Directed Physics Simulation
-  // Distance between nodes is inversely proportional to relation score (stronger relation = closer distance)
-  const compute3DForceLayout = (rawNodes: any[], rawEdges: any[]) => {
-    const validNodes = rawNodes.filter((n: any) => n.label && isValidProperEntity(n.label));
-    if (validNodes.length === 0) return;
-
-    const numNodes = validNodes.length;
-    const pos: { [key: string]: { x: number; y: number; z: number; vx: number; vy: number; vz: number } } = {};
-
-    // Initial 3D Fibonacci distribution seed
-    const phi = Math.PI * (3 - Math.sqrt(5));
-    const initRadius = 140;
-
-    validNodes.forEach((n: any, idx: number) => {
-      const y = 1 - (idx / Math.max(numNodes - 1, 1)) * 2;
-      const radiusAtY = Math.sqrt(Math.max(0, 1 - y * y));
-      const theta = phi * idx;
-
-      pos[n.id] = {
-        x: Math.cos(theta) * radiusAtY * initRadius,
-        y: y * initRadius,
-        z: Math.sin(theta) * radiusAtY * initRadius,
-        vx: 0, vy: 0, vz: 0
-      };
-    });
-
-    // Build edge lookup table for relation scores
-    const edgeMap: { [key: string]: number } = {};
-    rawEdges.forEach((e: any) => {
-      const score = Number(e.weight || e.relation_score || e.confidence || 1.0);
-      edgeMap[`${e.source}_${e.target}`] = score;
-      edgeMap[`${e.target}_${e.source}`] = score;
-    });
-
-    // Run 80 iterations of 3D force simulation
-    const iterations = 80;
-    const damping = 0.85;
-
-    for (let iter = 0; iter < iterations; iter++) {
-      // Repulsion force between all node pairs
-      for (let i = 0; i < validNodes.length; i++) {
-        for (let j = i + 1; j < validNodes.length; j++) {
-          const idA = validNodes[i].id;
-          const idB = validNodes[j].id;
-          const pA = pos[idA];
-          const pB = pos[idB];
-          if (!pA || !pB) continue;
-
-          let dx = pB.x - pA.x;
-          let dy = pB.y - pA.y;
-          let dz = pB.z - pA.z;
-          let dist = Math.sqrt(dx * dx + dy * dy + dz * dz) + 0.1;
-
-          // Coulomb repulsion
-          const repForce = 4500 / (dist * dist);
-          const fx = (dx / dist) * repForce;
-          const fy = (dy / dist) * repForce;
-          const fz = (dz / dist) * repForce;
-
-          pA.vx -= fx; pA.vy -= fy; pA.vz -= fz;
-          pB.vx += fx; pB.vy += fy; pB.vz += fz;
-        }
-      }
-
-      // Attraction force along edges based on relation score
-      rawEdges.forEach((e: any) => {
-        const pA = pos[e.source];
-        const pB = pos[e.target];
-        if (!pA || !pB) return;
-
-        let dx = pB.x - pA.x;
-        let dy = pB.y - pA.y;
-        let dz = pB.z - pA.z;
-        let dist = Math.sqrt(dx * dx + dy * dy + dz * dz) + 0.1;
-
-        // Relation score scaling: higher score = shorter target distance & stronger pull
-        const score = Number(e.weight || e.relation_score || e.confidence || 1.0);
-        const targetDist = Math.max(30, 160 / Math.max(score, 0.2));
-        const attForce = (dist - targetDist) * 0.04 * Math.min(score, 2.5);
-
-        const fx = (dx / dist) * attForce;
-        const fy = (dy / dist) * attForce;
-        const fz = (dz / dist) * attForce;
-
-        pA.vx += fx; pA.vy += fy; pA.vz += fz;
-        pB.vx -= fx; pB.vy -= fy; pB.vz -= fz;
-      });
-
-      // Update positions with damping
-      validNodes.forEach((n: any) => {
-        const p = pos[n.id];
-        if (!p) return;
-        p.x += p.vx; p.y += p.vy; p.z += p.vz;
-        p.vx *= damping; p.vy *= damping; p.vz *= damping;
-      });
+  const getNodeColor = (type?: string) => {
+    switch (type?.toUpperCase()) {
+      case 'PERSON': return '#ec4899';
+      case 'ORGANIZATION': return '#3b82f6';
+      case 'LOCATION': return '#10b981';
+      case 'BANK_ACCOUNT': return '#f59e0b';
+      case 'PHONE': return '#8b5cf6';
+      case 'VEHICLE': return '#ef4444';
+      default: return '#6366f1';
     }
-
-    const finalPos: { [key: string]: { x: number; y: number; z: number } } = {};
-    validNodes.forEach((n: any) => {
-      finalPos[n.id] = { x: pos[n.id].x, y: pos[n.id].y, z: pos[n.id].z };
-    });
-    setNodePositions3D(finalPos);
   };
-
-  // Auto rotation frame loop
-  useEffect(() => {
-    if (!autoRotate) return;
-    const interval = setInterval(() => {
-      if (!isDragging.current) {
-        setRotY(prev => prev + 0.006);
-      }
-    }, 30);
-    return () => clearInterval(interval);
-  }, [autoRotate]);
 
   const isValidProperEntity = (label: string) => {
     if (!label || label.trim().length < 2) return false;
@@ -1706,81 +1585,131 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
     return true;
   };
 
+  useEffect(() => {
+    setLoading(true);
+    const url = selectedCategory === 'ALL'
+      ? `/cases/${caseId}/graph`
+      : `/cases/${caseId}/graph?entity_types=${selectedCategory}`;
+
+    api.get(url)
+      .then(res => {
+        const data = res.data || { nodes: [], edges: [] };
+        setGraphData(data);
+        compute2DForceLayout(data.nodes || [], data.edges || []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [caseId, selectedCategory]);
+
+  const compute2DForceLayout = (rawNodes: any[], rawEdges: any[]) => {
+    const validNodes = rawNodes.filter((n: any) => n.label && isValidProperEntity(n.label));
+    if (validNodes.length === 0) return;
+
+    const numNodes = validNodes.length;
+    const pos: { [key: string]: { x: number; y: number; vx: number; vy: number } } = {};
+    const width = 800;
+    const height = 480;
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    // Circular layout seed centered in viewport
+    const radius = Math.min(width, height) * 0.32;
+    validNodes.forEach((n: any, idx: number) => {
+      const angle = (idx / numNodes) * 2 * Math.PI;
+      pos[n.id] = {
+        x: centerX + Math.cos(angle) * radius + (Math.random() - 0.5) * 20,
+        y: centerY + Math.sin(angle) * radius + (Math.random() - 0.5) * 20,
+        vx: 0, vy: 0
+      };
+    });
+
+    // Run 100 iterations of 2D Force-Directed Simulation
+    const iterations = 100;
+    const damping = 0.85;
+
+    for (let iter = 0; iter < iterations; iter++) {
+      // Repulsion between all node pairs
+      for (let i = 0; i < validNodes.length; i++) {
+        for (let j = i + 1; j < validNodes.length; j++) {
+          const idA = validNodes[i].id;
+          const idB = validNodes[j].id;
+          const pA = pos[idA];
+          const pB = pos[idB];
+          if (!pA || !pB) continue;
+
+          let dx = pB.x - pA.x;
+          let dy = pB.y - pA.y;
+          let dist = Math.sqrt(dx * dx + dy * dy) + 0.1;
+
+          const repForce = 5500 / (dist * dist);
+          const fx = (dx / dist) * repForce;
+          const fy = (dy / dist) * repForce;
+
+          pA.vx -= fx; pA.vy -= fy;
+          pB.vx += fx; pB.vy += fy;
+        }
+      }
+
+      // Attraction along edges (weighted by relation score)
+      rawEdges.forEach((e: any) => {
+        const pA = pos[e.source];
+        const pB = pos[e.target];
+        if (!pA || !pB) return;
+
+        let dx = pB.x - pA.x;
+        let dy = pB.y - pA.y;
+        let dist = Math.sqrt(dx * dx + dy * dy) + 0.1;
+
+        const weight = Number(e.weight || e.relation_score || e.confidence || 1.0);
+        const targetDist = Math.max(70, 180 / Math.max(weight, 0.3));
+        const attForce = (dist - targetDist) * 0.05 * Math.min(weight, 2.5);
+
+        const fx = (dx / dist) * attForce;
+        const fy = (dy / dist) * attForce;
+
+        pA.vx += fx; pA.vy += fy;
+        pB.vx -= fx; pB.vy -= fy;
+      });
+
+      // Gravity pull to center viewport
+      validNodes.forEach((n: any) => {
+        const p = pos[n.id];
+        if (!p) return;
+        p.vx += (centerX - p.x) * 0.01;
+        p.vy += (centerY - p.y) * 0.01;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= damping;
+        p.vy *= damping;
+      });
+    }
+
+    const finalPos: { [key: string]: { x: number; y: number } } = {};
+    validNodes.forEach((n: any) => {
+      finalPos[n.id] = { x: pos[n.id].x, y: pos[n.id].y };
+    });
+    setNodePositions2D(finalPos);
+  };
+
   const rawNodes = graphData.nodes || [];
   const edges = graphData.edges || [];
   const nodes = rawNodes.filter((n: any) => n.label && isValidProperEntity(n.label));
 
   const width = 800;
   const height = 480;
-  const centerX = width / 2;
-  const centerY = height / 2;
 
-  // Calculate node degree (connections count) to identify central Hub Nodes
+  // Node degrees
   const nodeDegrees: { [key: string]: number } = {};
   edges.forEach((e: any) => {
     nodeDegrees[e.source] = (nodeDegrees[e.source] || 0) + 1;
     nodeDegrees[e.target] = (nodeDegrees[e.target] || 0) + 1;
   });
 
-  const getNeuralClusterColor = (node: any) => {
-    const cid = node.cluster_id ?? 0;
-    const deg = nodeDegrees[node.id] || 0;
-    const isHub = deg >= 3;
-
-    // Palette matching user reference image: Magenta Cluster vs Green Cluster
-    if (cid % 2 === 0) {
-      // Magenta / Purple Cluster
-      return isHub ? '#4b1357' : (deg > 1 ? '#be24d6' : '#e056fd');
-    } else {
-      // Light Green / Emerald Cluster
-      return isHub ? '#0d4722' : (deg > 1 ? '#2ed573' : '#90ef8f');
-    }
-  };
-
-  // 3D Rotation Matrix & Perspective Projection
-  const projectedNodes: { [key: string]: { id: string; projX: number; projY: number; scale: number; zDepth: number; label: string; type: string; raw: any } } = {};
-
-  const cosY = Math.cos(rotY);
-  const sinY = Math.sin(rotY);
-  const cosX = Math.cos(rotX);
-  const sinX = Math.sin(rotX);
-  const fov = 450 * zoom;
-
-  nodes.forEach((n: any) => {
-    const p3d = nodePositions3D[n.id] || { x: 0, y: 0, z: 0 };
-
-    // Rotate around Y axis
-    const x1 = p3d.x * cosY + p3d.z * sinY;
-    const z1 = -p3d.x * sinY + p3d.z * cosY;
-
-    // Rotate around X axis
-    const y2 = p3d.y * cosX - z1 * sinX;
-    const z2 = p3d.y * sinX + z1 * cosX;
-
-    // Perspective scale calculation
-    const cameraDist = 400;
-    const scale = fov / (cameraDist + z2);
-
-    projectedNodes[n.id] = {
-      id: n.id,
-      projX: centerX + x1 * scale,
-      projY: centerY + y2 * scale,
-      scale,
-      zDepth: z2,
-      label: n.label || `Node ${n.id}`,
-      type: n.type || 'ENTITY',
-      raw: n
-    };
-  });
-
-  // Depth Sorting: Sort nodes from farthest to nearest so front nodes render on top
-  const sortedNodeList = Object.values(projectedNodes).sort((a, b) => b.zDepth - a.zDepth);
-
-  // Mouse & Touch Gesture Handlers
+  // Mouse / Touch handlers for panning
   const handleStart = (clientX: number, clientY: number) => {
     isDragging.current = true;
     hasMoved.current = false;
-    dragStart.current = { x: clientX, y: clientY, rotX, rotY };
+    dragStart.current = { x: clientX, y: clientY, initPanX: panX, initPanY: panY };
   };
 
   const handleMove = (clientX: number, clientY: number) => {
@@ -1790,41 +1719,12 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
       hasMoved.current = true;
     }
-    setRotY(dragStart.current.rotY + dx * 0.008);
-    setRotX(Math.max(-Math.PI / 2, Math.min(Math.PI / 2, dragStart.current.rotX - dy * 0.008)));
+    setPanX(dragStart.current.initPanX + dx);
+    setPanY(dragStart.current.initPanY + dy);
   };
 
   const handleEnd = () => {
     isDragging.current = false;
-    pinchDist.current = null;
-  };
-
-  // Touch Handlers for Mobile & Tablet (Rotation + Pinch-Zoom)
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 1) {
-      handleStart(e.touches[0].clientX, e.touches[0].clientY);
-    } else if (e.touches.length === 2) {
-      isDragging.current = false;
-      const d = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      pinchDist.current = d;
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 1) {
-      handleMove(e.touches[0].clientX, e.touches[0].clientY);
-    } else if (e.touches.length === 2 && pinchDist.current !== null) {
-      const d = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      const delta = d - pinchDist.current;
-      setZoom(prev => Math.max(0.5, Math.min(2.5, prev + delta * 0.005)));
-      pinchDist.current = d;
-    }
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -1835,7 +1735,6 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
 
   const categories = ['ALL', 'PERSON', 'ORGANIZATION', 'LOCATION', 'BANK_ACCOUNT', 'PHONE', 'VEHICLE', 'OBJECT'];
 
-  // Helper to find connected relations for selected node
   const connectedEdgesForSelectedNode = selectedNode
     ? edges.filter((e: any) => e.source === selectedNode.id || e.target === selectedNode.id)
     : [];
@@ -1846,13 +1745,13 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 750, color: '#172033', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>3D Relation-Clustered Entity Intelligence Graph</span>
-            <span style={{ fontSize: '11px', background: '#3b82f6', color: '#fff', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
-              AI FORCE 3D
+            <span>Connected 2D Entity Intelligence Graph</span>
+            <span style={{ fontSize: '11px', background: '#10b981', color: '#fff', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+              2D FORCE GRAPH
             </span>
           </h2>
           <p style={{ fontSize: '13px', color: '#5b6577', margin: '4px 0 0' }}>
-            Node distances optimized by AI relation scores (closer = stronger relationship). Click node or link for summary.
+            Connected entity relationships and edge weights. Click any node or relationship line to view details.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -1880,7 +1779,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
 
       {loading ? (
         <div style={{ background: '#0f172a', borderRadius: '12px', height: '420px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-          Initializing 3D Relation-Scored Graph...
+          Loading 2D Connected Intelligence Graph...
         </div>
       ) : nodes.length === 0 ? (
         <div style={{ background: '#f8fafc', border: '1px solid #e3e8ef', borderRadius: '10px', height: '360px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
@@ -1890,10 +1789,10 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: (selectedNode || selectedEdge) ? '1fr 320px' : '1fr', gap: '16px' }}>
-          {/* 3D Touch-Responsive Graph Viewport */}
+          {/* 2D Connected Graph Viewport */}
           <div
             style={{
-              background: 'radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%)',
+              background: '#0f172a',
               borderRadius: '12px',
               padding: '12px',
               position: 'relative',
@@ -1906,8 +1805,8 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
             onMouseMove={(e) => handleMove(e.clientX, e.clientY)}
             onMouseUp={handleEnd}
             onMouseLeave={handleEnd}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
+            onTouchStart={(e) => e.touches.length === 1 && handleStart(e.touches[0].clientX, e.touches[0].clientY)}
+            onTouchMove={(e) => e.touches.length === 1 && handleMove(e.touches[0].clientX, e.touches[0].clientY)}
             onTouchEnd={handleEnd}
             onWheel={handleWheel}
           >
@@ -1928,16 +1827,9 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
                 -
               </button>
               <button
-                onClick={(e) => { e.stopPropagation(); setAutoRotate(!autoRotate); }}
-                style={{ background: autoRotate ? '#2563eb' : '#334155', color: '#fff', border: 0, padding: '0 8px', height: '28px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 650 }}
-                title="Toggle Auto Rotation"
-              >
-                {autoRotate ? 'Auto 3D 🔄' : 'Paused ⏸'}
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setRotX(0.2); setRotY(0.4); setZoom(1.0); compute3DForceLayout(nodes, edges); }}
-                style={{ background: '#334155', color: '#94a3b8', border: 0, padding: '0 8px', height: '28px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}
-                title="Reset View & Physics"
+                onClick={(e) => { e.stopPropagation(); setZoom(1.0); setPanX(0); setPanY(0); compute2DForceLayout(nodes, edges); }}
+                style={{ background: '#334155', color: '#94a3b8', border: 0, padding: '0 10px', height: '28px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 600 }}
+                title="Reset View"
               >
                 Reset
               </button>
@@ -1945,144 +1837,157 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
 
             {/* Gesture Guide Hint */}
             <div style={{ position: 'absolute', bottom: '16px', left: '16px', zIndex: 10, background: 'rgba(15, 23, 42, 0.75)', color: '#94a3b8', fontSize: '11px', padding: '4px 10px', borderRadius: '6px', pointerEvents: 'none', border: '1px solid rgba(255,255,255,0.08)' }}>
-              📱 Drag/Touch to rotate • Pinch/Scroll zoom • Tap node or relation line to view details & summary
+              🖱 Drag to pan • Scroll to zoom • Click node or relation line to inspect details
             </div>
 
             <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
               <defs>
-                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="4" result="blur" />
+                <filter id="glow2d" x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="3" result="blur" />
                   <feComposite in="SourceGraphic" in2="blur" operator="over" />
                 </filter>
               </defs>
 
-              {/* Render 3D Edges */}
-              {edges.map((edge: any, idx: number) => {
-                const src = projectedNodes[edge.source];
-                const tgt = projectedNodes[edge.target];
-                if (!src || !tgt) return null;
+              <g transform={`translate(${panX}, ${panY}) scale(${zoom})`} style={{ transformOrigin: '400px 240px' }}>
+                {/* Connected Edges */}
+                {edges.map((edge: any, idx: number) => {
+                  const src = nodePositions2D[edge.source];
+                  const tgt = nodePositions2D[edge.target];
+                  if (!src || !tgt) return null;
 
-                const isEdgeSelected = selectedEdge && (
-                  (selectedEdge.source === edge.source && selectedEdge.target === edge.target) ||
-                  (selectedEdge.source === edge.target && selectedEdge.target === edge.source)
-                );
-                const isNodeHighlighted = selectedNode && (selectedNode.id === edge.source || selectedNode.id === edge.target);
-                const isHighlighted = isEdgeSelected || isNodeHighlighted;
+                  const isEdgeSelected = selectedEdge && (
+                    (selectedEdge.source === edge.source && selectedEdge.target === edge.target) ||
+                    (selectedEdge.source === edge.target && selectedEdge.target === edge.source)
+                  );
+                  const isNodeHighlighted = selectedNode && (selectedNode.id === edge.source || selectedNode.id === edge.target);
+                  const isHighlighted = isEdgeSelected || isNodeHighlighted;
 
-                const avgZ = (src.zDepth + tgt.zDepth) / 2;
-                const edgeOpacity = isHighlighted ? 1.0 : Math.max(0.15, Math.min(0.85, (250 - avgZ) / 350));
-                const midX = (src.projX + tgt.projX) / 2;
-                const midY = (src.projY + tgt.projY) / 2;
-                const relScore = edge.weight || edge.relation_score || 1.0;
+                  const midX = (src.x + tgt.x) / 2;
+                  const midY = (src.y + tgt.y) / 2;
+                  const relWeight = Number(edge.weight || edge.relation_score || 1.0);
 
-                return (
-                  <g
-                    key={`edge-${idx}`}
-                    style={{ opacity: edgeOpacity, cursor: 'pointer' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!hasMoved.current) {
-                        setSelectedEdge(isEdgeSelected ? null : edge);
-                        setSelectedNode(null);
-                      }
-                    }}
-                  >
-                    {/* Invisible thick line for easy touch selection */}
-                    <line
-                      x1={src.projX}
-                      y1={src.projY}
-                      x2={tgt.projX}
-                      y2={tgt.projY}
-                      stroke="transparent"
-                      strokeWidth={14}
-                    />
-                    {/* Clean Simple Connection Line */}
-                    <line
-                      x1={src.projX}
-                      y1={src.projY}
-                      x2={tgt.projX}
-                      y2={tgt.projY}
-                      stroke={isHighlighted ? '#38bdf8' : '#475569'}
-                      strokeWidth={isHighlighted ? 3 * Math.min(src.scale, tgt.scale) : Math.max(1, relScore * 1.2) * Math.min(src.scale, tgt.scale)}
-                      strokeDasharray={isHighlighted ? '0' : undefined}
-                    />
-                    {/* Relation Tag on Edge (Shown ONLY when Edge or Node is Clicked/Highlighted for extreme simplicity) */}
-                    {isHighlighted && (
-                      <g transform={`translate(${midX}, ${midY})`}>
-                        <rect
-                          x="-35"
-                          y="-9"
-                          width="70"
-                          height="18"
-                          rx="4"
-                          fill={isEdgeSelected ? '#38bdf8' : '#0f172a'}
-                          stroke={isHighlighted ? '#38bdf8' : '#334155'}
-                          strokeWidth="1"
-                        />
-                        <text
-                          x="0"
-                          y="3"
-                          fill={isEdgeSelected ? '#0f172a' : '#38bdf8'}
-                          fontSize="9"
-                          fontWeight="750"
-                          textAnchor="middle"
-                        >
-                          {(edge.type || edge.label || 'LINK').slice(0, 10)}
-                        </text>
-                      </g>
-                    )}
-                  </g>
-                );
-              })}
-
-              {/* Render Depth-Sorted 3D Nodes */}
-              {sortedNodeList.map((pos) => {
-                const isSelected = selectedNode && selectedNode.id === pos.id;
-                const color = getNeuralClusterColor(pos.raw);
-                const deg = nodeDegrees[pos.id] || 0;
-                const isHub = deg >= 3;
-                const nodeRadius = (isSelected ? 24 : (isHub ? 20 : 16)) * pos.scale;
-                const opacity = Math.max(0.35, Math.min(1.0, (300 - pos.zDepth) / 350));
-
-                return (
-                  <g
-                    key={`node-${pos.id}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!hasMoved.current) {
-                        setSelectedNode(isSelected ? null : pos.raw);
-                        setSelectedEdge(null);
-                      }
-                    }}
-                    style={{ cursor: 'pointer', opacity }}
-                  >
-                    {/* Node Circle */}
-                    <circle
-                      cx={pos.projX}
-                      cy={pos.projY}
-                      r={nodeRadius}
-                      fill={color}
-                      stroke={isSelected ? '#ffffff' : color}
-                      strokeWidth={isSelected ? 3 * pos.scale : 1.5 * pos.scale}
-                      filter={isSelected || isHub ? 'url(#glow)' : undefined}
-                    />
-
-                    {/* Minimal Text Label below Node */}
-                    <text
-                      x={pos.projX}
-                      y={pos.projY + nodeRadius + 14 * pos.scale}
-                      fill="#f8fafc"
-                      fontSize={Math.max(9, 10 * pos.scale)}
-                      fontWeight={isSelected ? '800' : '650'}
-                      textAnchor="middle"
-                      pointerEvents="none"
-                      style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}
+                  return (
+                    <g
+                      key={`edge-${idx}`}
+                      style={{ cursor: 'pointer' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!hasMoved.current) {
+                          setSelectedEdge(isEdgeSelected ? null : edge);
+                          setSelectedNode(null);
+                        }
+                      }}
                     >
-                      {pos.label.length > 14 ? pos.label.slice(0, 12) + '..' : pos.label}
-                    </text>
-                  </g>
-                );
-              })}
+                      {/* Invisible thick line for touch selection */}
+                      <line
+                        x1={src.x}
+                        y1={src.y}
+                        x2={tgt.x}
+                        y2={tgt.y}
+                        stroke="transparent"
+                        strokeWidth={14}
+                      />
+                      {/* Connected Line */}
+                      <line
+                        x1={src.x}
+                        y1={src.y}
+                        x2={tgt.x}
+                        y2={tgt.y}
+                        stroke={isHighlighted ? '#38bdf8' : '#475569'}
+                        strokeWidth={isHighlighted ? 3.5 : Math.max(1.5, Math.min(4, relWeight * 1.5))}
+                        strokeOpacity={isHighlighted ? 1.0 : 0.65}
+                      />
+                      {/* Relation Tag on Edge */}
+                      {isHighlighted && (
+                        <g transform={`translate(${midX}, ${midY})`}>
+                          <rect
+                            x="-40"
+                            y="-10"
+                            width="80"
+                            height="20"
+                            rx="5"
+                            fill={isEdgeSelected ? '#38bdf8' : '#0f172a'}
+                            stroke="#38bdf8"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x="0"
+                            y="4"
+                            fill={isEdgeSelected ? '#0f172a' : '#38bdf8'}
+                            fontSize="10"
+                            fontWeight="750"
+                            textAnchor="middle"
+                          >
+                            {(edge.type || edge.label || 'LINK').slice(0, 12)}
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
+
+                {/* 2D Connected Nodes */}
+                {nodes.map((node: any) => {
+                  const pos = nodePositions2D[node.id];
+                  if (!pos) return null;
+
+                  const isSelected = selectedNode && selectedNode.id === node.id;
+                  const color = getNodeColor(node.type);
+                  const deg = nodeDegrees[node.id] || 0;
+                  const isHub = deg >= 3;
+                  const radius = isSelected ? 22 : (isHub ? 18 : 14);
+
+                  return (
+                    <g
+                      key={`node-${node.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!hasMoved.current) {
+                          setSelectedNode(isSelected ? null : node);
+                          setSelectedEdge(null);
+                        }
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {/* Circle Outer Glow */}
+                      <circle
+                        cx={pos.x}
+                        cy={pos.y}
+                        r={radius + 4}
+                        fill="transparent"
+                        stroke={isSelected ? '#38bdf8' : color}
+                        strokeWidth={isSelected ? 3 : 1}
+                        strokeOpacity={0.4}
+                      />
+
+                      {/* Node Circle */}
+                      <circle
+                        cx={pos.x}
+                        cy={pos.y}
+                        r={radius}
+                        fill={color}
+                        stroke={isSelected ? '#ffffff' : '#0f172a'}
+                        strokeWidth={isSelected ? 3 : 2}
+                        filter={isSelected || isHub ? 'url(#glow2d)' : undefined}
+                      />
+
+                      {/* Label Text */}
+                      <text
+                        x={pos.x}
+                        y={pos.y + radius + 14}
+                        fill="#f8fafc"
+                        fontSize={isSelected ? 12 : 11}
+                        fontWeight={isSelected ? '800' : '650'}
+                        textAnchor="middle"
+                        pointerEvents="none"
+                        style={{ textShadow: '0 2px 4px rgba(0,0,0,0.9)' }}
+                      >
+                        {node.label.length > 16 ? node.label.slice(0, 14) + '..' : node.label}
+                      </text>
+                    </g>
+                  );
+                })}
+              </g>
             </svg>
           </div>
 
@@ -2100,7 +2005,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
 
                 <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
                   <span className="type-pill" style={{ background: getNodeColor(selectedNode.type), color: '#fff' }}>
-                    {selectedNode.type}
+                    {selectedNode.type || 'ENTITY'}
                   </span>
                   <span className="type-pill" style={{ background: '#e2e8f0', color: '#334155' }}>
                     {selectedNode.mention_count || 1} Mentions
