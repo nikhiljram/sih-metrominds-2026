@@ -28,20 +28,23 @@ class EmbeddingService:
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
         """Embed multiple texts in batch."""
-        if not texts:
+        if not texts or not self.client:
             return []
 
         embeddings = []
-        # Process in batches of 20 (Gemini batch limit)
         batch_size = 20
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
-            result = self.client.models.embed_content(
-                model=self.model,
-                contents=batch,
-            )
-            for emb in result.embeddings:
-                embeddings.append(list(emb.values))
+        try:
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i:i + batch_size]
+                result = self.client.models.embed_content(
+                    model=self.model,
+                    contents=batch,
+                )
+                for emb in result.embeddings:
+                    embeddings.append(list(emb.values))
+        except Exception as e:
+            print(f"[WARN] Batch embedding skipped: {e}")
+            return []
 
         return embeddings
 

@@ -38,8 +38,8 @@ export default function DocumentProgressBar({ caseId, documentId, fileName }: Do
     };
 
     fetchStatus();
-    // Poll fast (every 1.5s) while incomplete
-    const interval = setInterval(fetchStatus, 1500);
+    // Poll fast (every 500ms) for instant UI updates
+    const interval = setInterval(fetchStatus, 500);
 
     return () => {
       cancelled = true;
