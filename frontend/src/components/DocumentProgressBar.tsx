@@ -27,6 +27,7 @@ interface DocumentProgressBarProps {
 
 export default function DocumentProgressBar({ caseId, documentId, fileName }: DocumentProgressBarProps) {
   const [progress, setProgress] = useState<ProgressInfo | null>(null);
+  const [reprocessing, setReprocessing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,15 +49,40 @@ export default function DocumentProgressBar({ caseId, documentId, fileName }: Do
     };
   }, [caseId, documentId]);
 
+  const handleReupload = async () => {
+    setReprocessing(true);
+    try {
+      await api.post(`/cases/${caseId}/documents/${documentId}/process`);
+    } catch (e) {
+      console.error('Failed to trigger document re-processing', e);
+    } finally {
+      setTimeout(() => setReprocessing(false), 2000);
+    }
+  };
+
   if (!progress) return null;
+
+  const isPendingOrStuck = !progress.is_complete && (!progress.extracted_entities || progress.extracted_entities.length === 0);
 
   return (
     <div className={styles.progressContainer}>
       <div className={styles.headerRow}>
         <span className={styles.fileName}>📄 {fileName}</span>
-        <span className={styles.percentageText}>
-          {progress.is_complete ? '100%' : `${progress.percent}%`}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {(isPendingOrStuck || progress.is_failed) && (
+            <button
+              onClick={handleReupload}
+              disabled={reprocessing}
+              className={styles.reuploadButton}
+              title="Click to re-process and re-extract document entities"
+            >
+              {reprocessing ? '🔄 Starting...' : '🔄 Re-Process / Re-Upload'}
+            </button>
+          )}
+          <span className={styles.percentageText}>
+            {progress.is_complete ? '100%' : `${progress.percent}%`}
+          </span>
+        </div>
       </div>
 
       <div className={styles.barBackground}>

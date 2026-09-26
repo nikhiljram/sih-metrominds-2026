@@ -271,8 +271,6 @@ def get_document_processing_status(
     )
     entity_samples = [e[0] or e[1] for e in extracted_entities if (e[0] or e[1])]
 
-    rel_count = db.query(Relationship).filter(Relationship.case_id == case_id).count()
-
     return {
         "document_id": doc.id,
         "status": current_status,
@@ -286,6 +284,26 @@ def get_document_processing_status(
         "extracted_entities": entity_samples,
         "relationship_count": rel_count,
     }
+
+
+@router.post("/{document_id}/process", status_code=202)
+def trigger_manual_reprocessing(
+    case_id: int,
+    document_id: int,
+    background_tasks: BackgroundTasks = Depends(),
+    db: Session = Depends(get_db),
+):
+    """Re-trigger background extraction & processing for a document."""
+    doc = db.query(Document).filter(Document.id == document_id, Document.case_id == case_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    doc.processing_status = "PENDING"
+    doc.processing_error = None
+    db.commit()
+
+    background_tasks.add_task(process_document_background, document_id)
+    return {"message": "Re-processing triggered successfully"}
 
 
 @router.delete("/{document_id}", status_code=204)
