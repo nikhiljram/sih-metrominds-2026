@@ -14,6 +14,8 @@ from app.dependencies import get_current_user
 
 router = APIRouter(tags=["Graph"])
 
+import math
+
 ID_CODE_PATTERN = re.compile(r'^(P|L|T|LOC|ACC|DOC|EVD|ID|REF|SRC|COL)[\d_-]*$', re.IGNORECASE)
 DATE_PATTERN = re.compile(r'^\d{4}[-/.]\d{2}[-/.]\d{2}$|^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}$')
 GENERIC_NOISE_WORDS = {
@@ -38,6 +40,52 @@ def is_valid_proper_noun(label: str) -> bool:
     if re.match(r'^[A-Za-z]?\d+$', val):
         return False
     return True
+
+def calculate_normalized_relation_score(
+    co_occurrence_count: int,
+    confidence: float,
+    is_explicit: bool,
+    case_count: int,
+    min_mentions: int,
+    max_c: int = 15,
+    max_cases: int = 5,
+    max_mentions: int = 30
+) -> float:
+    # 1. Co-occurrence score (35%) with log normalization
+    c_score = math.log(1 + max(0, co_occurrence_count)) / math.log(1 + max(1, max_c))
+    c_score = min(1.0, c_score)
+
+    # 2. Relationship extraction confidence (25%)
+    conf_score = max(0.0, min(1.0, confidence))
+
+    # 3. Direct/explicit relationship weight (20%)
+    explicit_score = 1.0 if is_explicit else 0.5
+
+    # 4. Case-level co-occurrence (10%)
+    case_score = math.log(1 + max(0, case_count)) / math.log(1 + max(1, max_cases))
+    case_score = min(1.0, case_score)
+
+    # 5. Entity frequency/mention balance (10%)
+    mention_score = math.log(1 + max(0, min_mentions)) / math.log(1 + max(1, max_mentions))
+    mention_score = min(1.0, mention_score)
+
+    # Weighted sum formula (0.0 to 1.0)
+    final_score = (
+        (0.35 * c_score) +
+        (0.25 * conf_score) +
+        (0.20 * explicit_score) +
+        (0.10 * case_score) +
+        (0.10 * mention_score)
+    )
+
+    return round(final_score, 3)
+
+def get_relationship_strength_level(score: float) -> str:
+    if score >= 0.85: return "Very Strong"
+    if score >= 0.70: return "Strong"
+    if score >= 0.50: return "Moderate"
+    if score >= 0.30: return "Possible"
+    return "Weak"
 
 
 @router.get("/cases/{case_id}/graph", response_model=GraphResponse)
@@ -87,18 +135,6 @@ def get_case_graph(
 
     edge_dict: dict[tuple[int, int], GraphEdge] = {}
 
-    for r in relationships:
-        pair = (min(r.source_entity_id, r.target_entity_id), max(r.source_entity_id, r.target_entity_id))
-        w = float(getattr(r, 'weight', 2.0) or 2.0)
-        edge_dict[pair] = GraphEdge(
-            source=r.source_entity_id,
-            target=r.target_entity_id,
-            type=r.relationship_type or 'ASSOCIATED_WITH',
-            label=r.relationship_label or r.relationship_type,
-            confidence=r.confidence or 0.9,
-            evidence_count=r.evidence_count or 1,
-            weight=round(w, 2),
-        )
 
     # Detect co-occurrences in same document chunks
     chunk_sources = (
@@ -123,28 +159,61 @@ def get_case_graph(
                 pair = (min(id1, id2), max(id1, id2))
                 co_occur_counts[pair] = co_occur_counts.get(pair, 0) + 1
 
-    # Add co-occurrence edges with dynamic weight calculation
+    # Map entity mention counts
+    ent_mentions = {e.id: e.mention_count or 1 for e in entities}
+
+    # Process explicit DB relationships first
+    for r in relationships:
+        pair = (min(r.source_entity_id, r.target_entity_id), max(r.source_entity_id, r.target_entity_id))
+        co_c = co_occur_counts.get(pair, 1)
+        m1 = ent_mentions.get(r.source_entity_id, 1)
+        m2 = ent_mentions.get(r.target_entity_id, 1)
+        rel_conf = r.confidence or 0.9
+
+        score = calculate_normalized_relation_score(
+            co_occurrence_count=co_c,
+            confidence=rel_conf,
+            is_explicit=True,
+            case_count=1,
+            min_mentions=min(m1, m2)
+        )
+        strength = get_relationship_strength_level(score)
+
+        edge_dict[pair] = GraphEdge(
+            source=r.source_entity_id,
+            target=r.target_entity_id,
+            type=r.relationship_type or 'ASSOCIATED_WITH',
+            label=f"{r.relationship_label or r.relationship_type} ({strength})",
+            confidence=rel_conf,
+            evidence_count=co_c,
+            weight=score,
+        )
+
+    # Add inferred co-occurrence edges
     for pair, count in co_occur_counts.items():
-        id1, id2 = pair
-        e1 = next((e for e in entities if e.id == id1), None)
-        e2 = next((e for e in entities if e.id == id2), None)
-        m1 = e1.mention_count if e1 else 1
-        m2 = e2.mention_count if e2 else 1
+        if pair not in edge_dict:
+            id1, id2 = pair
+            m1 = ent_mentions.get(id1, 1)
+            m2 = ent_mentions.get(id2, 1)
+            rel_conf = min(0.95, 0.70 + (count * 0.04))
 
-        dynamic_weight = round(1.2 + (count * 0.7) + (min(m1, m2) * 0.2), 2)
+            score = calculate_normalized_relation_score(
+                co_occurrence_count=count,
+                confidence=rel_conf,
+                is_explicit=False,
+                case_count=1,
+                min_mentions=min(m1, m2)
+            )
+            strength = get_relationship_strength_level(score)
 
-        if pair in edge_dict:
-            edge_dict[pair].weight = round(edge_dict[pair].weight + (count * 0.5), 2)
-            edge_dict[pair].evidence_count += count
-        else:
             edge_dict[pair] = GraphEdge(
                 source=id1,
                 target=id2,
                 type="CO_OCCURRENCE",
-                label=f"SHARED EVIDENCE ({count})",
-                confidence=min(0.95, 0.75 + (count * 0.05)),
+                label=f"SHARED EVIDENCE ({strength})",
+                confidence=rel_conf,
                 evidence_count=count,
-                weight=dynamic_weight,
+                weight=score,
             )
 
     # Topological Neural Network Fallback: Ensure sparse graph entities link to nearest community neighbors
