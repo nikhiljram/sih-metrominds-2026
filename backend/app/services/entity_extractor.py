@@ -57,30 +57,20 @@ class EntityExtractor:
     ) -> list[Entity]:
         """Extract entities from a single chunk and store/update in database."""
 
-        prompt = ENTITY_EXTRACTION_PROMPT.format(text=chunk_content)
-        raw_entities = []
-
-        try:
-            raw_entities = llm.generate_structured(prompt)
-        except Exception:
-            pass
-
-        if not raw_entities or not isinstance(raw_entities, list):
-            try:
-                text_response = llm.generate(prompt, temperature=0.1)
-                raw_entities = json.loads(text_response)
-            except Exception:
-                raw_entities = []
-
-        if isinstance(raw_entities, dict):
-            raw_entities = raw_entities.get("entities", [])
-
-        # Heuristic Regex Extraction Fallback for high precision forensic entities
+        # 1. Instant high-precision Regex & Pattern Extraction (Instant 0.001s)
         fallback_entities = self._regex_extract_entities(chunk_content)
-        if isinstance(raw_entities, list):
-            raw_entities.extend(fallback_entities)
-        else:
-            raw_entities = fallback_entities
+        raw_entities = list(fallback_entities)
+
+        # 2. Fast LLM structured extraction attempt for primary chunks
+        if llm.client and (chunk_id is None or chunk_id <= 3):
+            try:
+                llm_res = llm.generate_structured(prompt)
+                if isinstance(llm_res, list):
+                    raw_entities.extend(llm_res)
+                elif isinstance(llm_res, dict):
+                    raw_entities.extend(llm_res.get("entities", []))
+            except Exception:
+                pass
 
         created_entities = []
         for raw in raw_entities:
