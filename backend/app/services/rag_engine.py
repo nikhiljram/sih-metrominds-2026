@@ -109,16 +109,6 @@ class RAGEngine:
         # Step 4: Generate answer
         raw_answer = llm.generate(prompt, system_prompt=SYSTEM_PROMPT, temperature=0.3)
         
-        # Clean formatting symbols for clear display
-        clean_answer = (
-            raw_answer
-            .replace("**", "")
-            .replace("`", "")
-            .replace("###", "")
-            .replace("##", "")
-            .replace("#", "")
-        )
-
         latency_ms = int((time.time() - start_time) * 1000)
 
         # Step 5: Find related entities mentioned in the question
@@ -134,7 +124,7 @@ class RAGEngine:
                 })
 
         return {
-            "answer": clean_answer,
+            "answer": raw_answer,
             "sources": sources,
             "related_entities": related_entities,
             "confidence": "Based on available case records",

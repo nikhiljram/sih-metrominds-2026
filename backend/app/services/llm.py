@@ -40,16 +40,115 @@ class LLMProvider:
             return self._heuristic_fallback(prompt)
 
     def _heuristic_fallback(self, prompt: str) -> str:
-        """Synthesize answer directly from context when LLM API key is invalid/offline."""
+        """Smarter question-aware extractive fallback when Gemini API is offline/unavailable."""
+        # Extract the question from the prompt
+        question = ""
+        question_marker = "OFFICER'S QUESTION:"
+        if question_marker in prompt:
+            q_part = prompt.split(question_marker)[-1].strip()
+            question = q_part.split("\n")[0].strip().lower()
+
+        # Extract document chunk excerpts (lines starting with quote chars or source refs)
         lines = prompt.split('\n')
-        evidence = [l for l in lines if l.startswith('-') or l.startswith('[')]
-        ev_summary = "\n".join(evidence[:10]) if evidence else "No direct document match found."
-        
-        return (
-            f"**ASSISTANT INVESTIGATION BRIEF (EXTRACTIVE ANALYSIS)**\n\n"
-            f"**Evidence Summary:**\n{ev_summary}\n\n"
-            f"**Note:** Grounded directly on active case entities and relationships in the database."
-        )
+        doc_chunks = []
+        current_source = None
+        in_quote = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('[') and 'Source:' in stripped:
+                current_source = stripped
+                in_quote = True
+                continue
+            if in_quote and stripped.startswith('"'):
+                content = stripped.strip('"').strip()
+                if content:
+                    doc_chunks.append((current_source, content))
+                in_quote = False
+
+        # Filter chunks by question keywords (skip generic filler words)
+        stopwords = {'who', 'what', 'is', 'the', 'are', 'was', 'a', 'an', 'and', 'or', 'to', 'of', 'in', 'on', 'with', 'for'}
+        keywords = [w for w in question.replace('?', '').replace(',', '').split() if w not in stopwords and len(w) > 2]
+
+        relevant_chunks = []
+        other_chunks = []
+        for src, content in doc_chunks:
+            lower_content = content.lower()
+            if any(kw in lower_content for kw in keywords):
+                relevant_chunks.append((src, content))
+            else:
+                other_chunks.append((src, content))
+
+        # Combine: relevant first, then fill up to 4 total from others
+        selected = (relevant_chunks + other_chunks)[:4]
+
+        if not selected:
+            return (
+                "### Investigation Status\n\n"
+                "No relevant evidence chunks were found in the uploaded case documents for your query.\n\n"
+                "**Tip:** Upload evidence files (PDFs, CSVs, docs) under the **Documents** tab "
+                "to enable AI-powered search and analysis."
+            )
+
+        # Build entity section (only those mentioned in question or top entities)
+        entity_lines = []
+        in_entities = False
+        for line in lines:
+            stripped = line.strip()
+            if 'KNOWN ENTITIES' in stripped:
+                in_entities = True
+                continue
+            if 'KNOWN RELATIONSHIPS' in stripped:
+                in_entities = False
+                continue
+            if in_entities and stripped.startswith('-'):
+                # Show only if question keyword matches entity line
+                lower_line = stripped.lower()
+                if keywords and any(kw in lower_line for kw in keywords):
+                    entity_lines.append(stripped)
+
+        # Build relationship section (only those involving question keywords)
+        rel_lines = []
+        in_rels = False
+        for line in lines:
+            stripped = line.strip()
+            if 'KNOWN RELATIONSHIPS' in stripped:
+                in_rels = True
+                continue
+            if in_rels and stripped.startswith('-'):
+                lower_line = stripped.lower()
+                if keywords and any(kw in lower_line for kw in keywords):
+                    rel_lines.append(stripped)
+
+        # Compose structured response
+        response_parts = []
+        response_parts.append("### Executive Summary")
+        if question:
+            response_parts.append(f"Based on the case evidence, here is what was found regarding: *\"{question.title()}\"*\n")
+
+        response_parts.append("### Key Evidence Findings")
+        for i, (src, content) in enumerate(selected, 1):
+            src_clean = src.replace('[', '').replace(']', '').strip() if src else f'Document {i}'
+            # Truncate long content for readability
+            excerpt = content[:400] + ('...' if len(content) > 400 else '')
+            response_parts.append(f"**[{i}] {src_clean}:**")
+            response_parts.append(f"> {excerpt}\n")
+
+        if entity_lines:
+            response_parts.append("### Relevant Entities")
+            for el in entity_lines[:8]:
+                response_parts.append(el)
+            response_parts.append("")
+
+        if rel_lines:
+            response_parts.append("### Identified Connections")
+            for rl in rel_lines[:6]:
+                response_parts.append(rl)
+            response_parts.append("")
+
+        response_parts.append("---")
+        response_parts.append("*Note: This is an extractive summary from case documents. Connect a Gemini API key for full AI-synthesized analysis.*")
+
+        return "\n".join(response_parts)
 
     def generate_structured(self, prompt: str, system_prompt: str = None, temperature: float = 0.1) -> dict:
         """Generate structured JSON output from LLM."""
