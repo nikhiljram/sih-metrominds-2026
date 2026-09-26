@@ -8,10 +8,10 @@ from app.services.llm import llm
 
 
 ENTITY_EXTRACTION_PROMPT = """You are an expert entity extractor for police investigation documents.
-Extract ALL entities from the following investigation text.
+Extract ONLY high-confidence, real-world proper entities (Real Person Names, Specific Locations/Addresses, Organizations, Bank Accounts, Phone Numbers, Vehicle Numbers, Weapons, Drugs, IP Addresses, Official Documents, Specific Noun Objects).
 
 Return a JSON array of objects, each with:
-- "type": one of PERSON, PHONE, EMAIL, VEHICLE, LOCATION, ORGANIZATION, BANK_ACCOUNT, AADHAAR, PAN, DATE, WEAPON, DRUG, AMOUNT, DOCUMENT_REF
+- "type": one of PERSON, PHONE, EMAIL, VEHICLE, LOCATION, ORGANIZATION, BANK_ACCOUNT, AADHAAR, PAN, DATE, WEAPON, DRUG, AMOUNT, OBJECT
 - "value": the exact text as found in the document
 - "normalized": cleaned/standardized version (e.g., phone numbers as 10 digits, vehicle numbers as XX00XX0000, dates as YYYY-MM-DD)
 - "confidence": 0.0 to 1.0
@@ -19,11 +19,14 @@ Return a JSON array of objects, each with:
 Rules:
 - For PHONE numbers: normalize to 10 digits, strip country code
 - For VEHICLE: normalize to Indian format (e.g., KA01AB1234)
-- For PERSON: use proper case
+- For PERSON: use proper case (Real Names only)
+- For LOCATION: specific cities, districts, addresses or building names
 - For DATE: convert to YYYY-MM-DD if possible
 - For AMOUNT: include currency if mentioned (e.g., "₹50,000")
-- Extract EVERY entity, even if you're not 100% certain
-- Do NOT make up entities that aren't in the text
+- For OBJECT: concrete evidence items (e.g., "Hard Drive", "iPhone 15", "Sealed Knife")
+- DO NOT extract common words, generic nouns (like 'man', 'file', 'police', 'car', 'case', 'report'), verbs, or vague pronouns.
+- Extract ONLY clear, meaningful entities with high confidence (>= 0.70).
+- Do NOT make up entities that aren't in the text.
 
 Text to analyze:
 ---
@@ -31,6 +34,13 @@ Text to analyze:
 ---
 
 Return ONLY valid JSON array. No explanation."""
+
+IGNORED_ENTITY_WORDS = {
+    "police", "officer", "inspector", "station", "court", "case", "file",
+    "document", "man", "woman", "person", "location", "address", "phone",
+    "vehicle", "car", "amount", "money", "unknown", "n/a", "none", "null",
+    "test", "fir", "report", "evidence", "date", "time", "year", "month"
+}
 
 
 class EntityExtractor:
@@ -75,11 +85,15 @@ class EntityExtractor:
             if not entity_type or not entity_value:
                 continue
 
+            # Strict noise & generic word filter
+            if len(normalized) < 2 or normalized.lower() in IGNORED_ENTITY_WORDS or confidence < 0.70:
+                continue
+
             # Validate entity type
             valid_types = [
                 "PERSON", "PHONE", "EMAIL", "VEHICLE", "LOCATION",
                 "ORGANIZATION", "BANK_ACCOUNT", "AADHAAR", "PAN",
-                "DATE", "WEAPON", "DRUG", "AMOUNT", "DOCUMENT_REF"
+                "DATE", "WEAPON", "DRUG", "AMOUNT", "OBJECT", "DOCUMENT_REF"
             ]
             if entity_type not in valid_types:
                 continue

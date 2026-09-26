@@ -1215,10 +1215,10 @@ SUMMARY OF CASE DOSSIERS & INTELLIGENCE REPOSITORY
   );
 }
 
-// --- DOCUMENT PREVIEW MODAL ---
 function DocumentPreviewModal({ doc, caseId, onClose }: { doc: any; caseId: string; onClose: () => void }) {
   const [detail, setDetail] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [previewTab, setPreviewTab] = useState<'NATIVE' | 'TEXT'>('NATIVE');
 
   useEffect(() => {
     if (!doc?.id) return;
@@ -1232,9 +1232,14 @@ function DocumentPreviewModal({ doc, caseId, onClose }: { doc: any; caseId: stri
 
   if (!doc) return null;
 
+  const fileUrl = `${api.defaults.baseURL}/cases/${caseId}/documents/${doc.id}/file`;
+  const ext = (doc.file_type || doc.original_name || doc.file_name || '').toLowerCase();
+  const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'].some(e => ext.endsWith(e));
+  const isPdf = ext.endsWith('pdf');
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-      <div className="card" style={{ width: '720px', maxWidth: '95vw', maxHeight: '85vh', overflowY: 'auto', padding: '28px', background: '#fff', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+      <div className="card" style={{ width: '850px', maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '28px', background: '#fff', borderRadius: '12px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 750, color: '#172033' }}>{doc.original_name || doc.file_name}</h2>
@@ -1245,7 +1250,7 @@ function DocumentPreviewModal({ doc, caseId, onClose }: { doc: any; caseId: stri
           </button>
         </div>
 
-        <div className="details-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '20px', padding: '12px', background: '#f8fafc', borderRadius: '8px' }}>
+        <div className="details-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '16px', padding: '12px', background: '#f8fafc', borderRadius: '8px' }}>
           <div className="detail">
             <span>File Format</span>
             <b style={{ textTransform: 'uppercase' }}>{doc.file_type || 'PDF'}</b>
@@ -1260,10 +1265,60 @@ function DocumentPreviewModal({ doc, caseId, onClose }: { doc: any; caseId: stri
           </div>
         </div>
 
-        <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#172033', marginBottom: '8px' }}>Extracted Document Content & Summary</h3>
-        <div style={{ background: '#0f172a', color: '#e2e8f0', padding: '16px', borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px', lineHeight: 1.6, maxHeight: '300px', overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
-          {loading ? 'Fetching extracted content...' : (detail?.extracted_text || doc.extracted_text || 'No text extracted for this evidence file yet.')}
+        {/* VIEW MODE TOGGLE TABS */}
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+          <button
+            onClick={() => setPreviewTab('NATIVE')}
+            className={`secondary ${previewTab === 'NATIVE' ? 'active' : ''}`}
+            style={{ fontWeight: 650, fontSize: '13px', background: previewTab === 'NATIVE' ? '#2563eb' : '#f1f5f9', color: previewTab === 'NATIVE' ? '#fff' : '#475569', border: 0, padding: '6px 14px', borderRadius: '6px' }}
+          >
+            📄 Original Document Viewer
+          </button>
+          <button
+            onClick={() => setPreviewTab('TEXT')}
+            className={`secondary ${previewTab === 'TEXT' ? 'active' : ''}`}
+            style={{ fontWeight: 650, fontSize: '13px', background: previewTab === 'TEXT' ? '#2563eb' : '#f1f5f9', color: previewTab === 'TEXT' ? '#fff' : '#475569', border: 0, padding: '6px 14px', borderRadius: '6px' }}
+          >
+            📝 Extracted OCR & AI Text
+          </button>
         </div>
+
+        {previewTab === 'NATIVE' ? (
+          <div style={{ width: '100%', minHeight: '420px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            {isPdf ? (
+              <iframe
+                src={fileUrl}
+                title="Document PDF Preview"
+                style={{ width: '100%', height: '500px', border: 0 }}
+              />
+            ) : isImage ? (
+              <div style={{ padding: '16px', width: '100%', textAlign: 'center' }}>
+                <img
+                  src={fileUrl}
+                  alt={doc.original_name}
+                  style={{ maxWidth: '100%', maxHeight: '480px', objectFit: 'contain', borderRadius: '6px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                />
+              </div>
+            ) : (
+              <div style={{ padding: '32px', textAlign: 'center', color: '#64748b' }}>
+                <p style={{ margin: '0 0 12px', fontSize: '14px' }}>Native browser preview for <b>.{ext}</b> is available via direct download.</p>
+                <button
+                  className="primary"
+                  onClick={() => window.open(fileUrl, '_blank')}
+                >
+                  Open Original Document File 🔗
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#172033', marginBottom: '8px' }}>Extracted Document Content & Summary</h3>
+            <div style={{ background: '#0f172a', color: '#e2e8f0', padding: '16px', borderRadius: '8px', fontFamily: 'monospace', fontSize: '12px', lineHeight: 1.6, maxHeight: '400px', overflowY: 'auto', whiteSpace: 'pre-wrap' }}>
+              {loading ? 'Fetching extracted content...' : (detail?.extracted_text || doc.extracted_text || 'No text extracted for this evidence file yet.')}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '20px' }}>
           <button
