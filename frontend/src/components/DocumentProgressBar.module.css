@@ -99,6 +99,19 @@
   border: 1px solid rgba(254, 202, 202, 0.9);
 }
 
+.entityTicker {
+  margin-top: 10px;
+  padding: 6px 10px;
+  background: rgba(241, 245, 249, 0.9);
+  border-radius: 6px;
+  font-size: 11px;
+  color: #334155;
+  border: 1px solid rgba(203, 213, 225, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .completeBanner {
   margin-top: 10px;
   font-size: 12px;

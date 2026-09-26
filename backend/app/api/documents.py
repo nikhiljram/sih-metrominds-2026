@@ -256,6 +256,23 @@ def get_document_processing_status(
     is_complete = current_status == "COMPLETED"
     is_failed = current_status == "FAILED"
 
+    # Fetch live extracted entities for this document
+    from app.models.entity_source import EntitySource
+    from app.models.entity import Entity
+    from app.models.relationship import Relationship
+
+    extracted_entities = (
+        db.query(Entity.display_name, Entity.entity_value)
+        .join(EntitySource, EntitySource.entity_id == Entity.id)
+        .filter(EntitySource.document_id == document_id)
+        .distinct()
+        .limit(10)
+        .all()
+    )
+    entity_samples = [e[0] or e[1] for e in extracted_entities if (e[0] or e[1])]
+
+    rel_count = db.query(Relationship).filter(Relationship.case_id == case_id).count()
+
     return {
         "document_id": doc.id,
         "status": current_status,
@@ -266,6 +283,8 @@ def get_document_processing_status(
         "stages": stages,
         "total_chunks": doc.total_chunks or 0,
         "total_pages": doc.total_pages or 0,
+        "extracted_entities": entity_samples,
+        "relationship_count": rel_count,
     }
 
 

@@ -15,6 +15,8 @@ interface ProgressInfo {
   is_failed: boolean;
   error?: string | null;
   stages: Stage[];
+  extracted_entities?: string[];
+  relationship_count?: number;
 }
 
 interface DocumentProgressBarProps {
@@ -38,7 +40,6 @@ export default function DocumentProgressBar({ caseId, documentId, fileName }: Do
     };
 
     fetchStatus();
-    // Poll fast (every 500ms) for instant UI updates
     const interval = setInterval(fetchStatus, 500);
 
     return () => {
@@ -80,14 +81,27 @@ export default function DocumentProgressBar({ caseId, documentId, fileName }: Do
             icon = '✕';
           }
 
+          let extraInfo = null;
+          if (stage.key === 'ENTITY_EXTRACTING' && progress.extracted_entities && progress.extracted_entities.length > 0) {
+            extraInfo = `: ${progress.extracted_entities.slice(0, 3).join(', ')}${progress.extracted_entities.length > 3 ? '...' : ''}`;
+          } else if (stage.key === 'RELATIONSHIP_EXTRACTING' && typeof progress.relationship_count === 'number' && progress.relationship_count > 0) {
+            extraInfo = `: ${progress.relationship_count} links`;
+          }
+
           return (
             <div key={stage.key} className={`${styles.stageChip} ${badgeClass}`}>
               <span className={styles.chipIcon}>{icon}</span>
-              <span>{stage.label}</span>
+              <span>{stage.label}{extraInfo}</span>
             </div>
           );
         })}
       </div>
+
+      {progress.extracted_entities && progress.extracted_entities.length > 0 && (
+        <div className={styles.entityTicker}>
+          🔍 <strong>Extracted Entities:</strong> {progress.extracted_entities.join(' • ')}
+        </div>
+      )}
 
       {progress.is_complete && (
         <div className={styles.completeBanner}>
