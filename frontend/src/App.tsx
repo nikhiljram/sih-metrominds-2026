@@ -1996,38 +1996,41 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
                       stroke="transparent"
                       strokeWidth={14}
                     />
+                    {/* Clean Simple Connection Line */}
                     <line
                       x1={src.projX}
                       y1={src.projY}
                       x2={tgt.projX}
                       y2={tgt.projY}
                       stroke={isHighlighted ? '#38bdf8' : '#475569'}
-                      strokeWidth={isHighlighted ? 3.5 * Math.min(src.scale, tgt.scale) : Math.max(1, relScore * 1.5) * Math.min(src.scale, tgt.scale)}
-                      strokeDasharray={isHighlighted ? '0' : '4 3'}
+                      strokeWidth={isHighlighted ? 3 * Math.min(src.scale, tgt.scale) : Math.max(1, relScore * 1.2) * Math.min(src.scale, tgt.scale)}
+                      strokeDasharray={isHighlighted ? '0' : undefined}
                     />
-                    {/* Relation Tag on Edge */}
-                    <g transform={`translate(${midX}, ${midY})`}>
-                      <rect
-                        x="-38"
-                        y="-10"
-                        width="76"
-                        height="18"
-                        rx="4"
-                        fill={isEdgeSelected ? '#38bdf8' : '#0f172a'}
-                        stroke={isHighlighted ? '#38bdf8' : '#334155'}
-                        strokeWidth="1"
-                      />
-                      <text
-                        x="0"
-                        y="3"
-                        fill={isEdgeSelected ? '#0f172a' : '#38bdf8'}
-                        fontSize="9"
-                        fontWeight="750"
-                        textAnchor="middle"
-                      >
-                        {(edge.type || edge.label || 'LINK').slice(0, 10)}
-                      </text>
-                    </g>
+                    {/* Relation Tag on Edge (Shown ONLY when Edge or Node is Clicked/Highlighted for extreme simplicity) */}
+                    {isHighlighted && (
+                      <g transform={`translate(${midX}, ${midY})`}>
+                        <rect
+                          x="-35"
+                          y="-9"
+                          width="70"
+                          height="18"
+                          rx="4"
+                          fill={isEdgeSelected ? '#38bdf8' : '#0f172a'}
+                          stroke={isHighlighted ? '#38bdf8' : '#334155'}
+                          strokeWidth="1"
+                        />
+                        <text
+                          x="0"
+                          y="3"
+                          fill={isEdgeSelected ? '#0f172a' : '#38bdf8'}
+                          fontSize="9"
+                          fontWeight="750"
+                          textAnchor="middle"
+                        >
+                          {(edge.type || edge.label || 'LINK').slice(0, 10)}
+                        </text>
+                      </g>
+                    )}
                   </g>
                 );
               })}
@@ -2038,7 +2041,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
                 const color = getNeuralClusterColor(pos.raw);
                 const deg = nodeDegrees[pos.id] || 0;
                 const isHub = deg >= 3;
-                const nodeRadius = (isSelected ? 26 : (isHub ? 22 : 18)) * pos.scale;
+                const nodeRadius = (isSelected ? 24 : (isHub ? 20 : 16)) * pos.scale;
                 const opacity = Math.max(0.35, Math.min(1.0, (300 - pos.zDepth) / 350));
 
                 return (
@@ -2053,7 +2056,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
                     }}
                     style={{ cursor: 'pointer', opacity }}
                   >
-                    {/* Glow effect for front/selected nodes */}
+                    {/* Node Circle */}
                     <circle
                       cx={pos.projX}
                       cy={pos.projY}
@@ -2061,42 +2064,19 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
                       fill={color}
                       stroke={isSelected ? '#ffffff' : color}
                       strokeWidth={isSelected ? 3 * pos.scale : 1.5 * pos.scale}
-                      filter={pos.zDepth < 0 || isSelected ? 'url(#glow)' : undefined}
+                      filter={isSelected || isHub ? 'url(#glow)' : undefined}
                     />
 
-                    {/* Node Initials */}
+                    {/* Minimal Text Label below Node */}
                     <text
                       x={pos.projX}
-                      y={pos.projY + 4 * pos.scale}
-                      fill="#ffffff"
-                      fontSize={Math.max(8, 10 * pos.scale)}
-                      fontWeight="750"
-                      textAnchor="middle"
-                      pointerEvents="none"
-                    >
-                      {(pos.label || 'Node').slice(0, 3).toUpperCase()}
-                    </text>
-
-                    {/* 3D Label Tag */}
-                    <rect
-                      x={pos.projX - 50 * pos.scale}
-                      y={pos.projY + (nodeRadius + 6)}
-                      width={100 * pos.scale}
-                      height={20 * pos.scale}
-                      rx={4 * pos.scale}
-                      fill="#0f172a"
-                      stroke={isSelected ? '#38bdf8' : color}
-                      strokeWidth={1.5 * pos.scale}
-                      opacity={0.9}
-                    />
-                    <text
-                      x={pos.projX}
-                      y={pos.projY + (nodeRadius + 6) + 13 * pos.scale}
+                      y={pos.projY + nodeRadius + 14 * pos.scale}
                       fill="#f8fafc"
-                      fontSize={Math.max(8, 9.5 * pos.scale)}
-                      fontWeight="650"
+                      fontSize={Math.max(9, 10 * pos.scale)}
+                      fontWeight={isSelected ? '800' : '650'}
                       textAnchor="middle"
                       pointerEvents="none"
+                      style={{ textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}
                     >
                       {pos.label.length > 14 ? pos.label.slice(0, 12) + '..' : pos.label}
                     </text>
