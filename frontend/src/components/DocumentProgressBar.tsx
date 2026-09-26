@@ -36,10 +36,11 @@ export default function DocumentProgressBar({ caseId, documentId, fileName }: Do
         console.error('Failed to fetch document status', e);
       }
     };
-    // Initial fetch
+
     fetchStatus();
-    // Poll every 3 seconds
-    const interval = setInterval(fetchStatus, 3000);
+    // Poll fast (every 1.5s) while incomplete
+    const interval = setInterval(fetchStatus, 1500);
+
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -50,27 +51,55 @@ export default function DocumentProgressBar({ caseId, documentId, fileName }: Do
 
   return (
     <div className={styles.progressContainer}>
-      <div className={styles.step}>Processing "{fileName}"</div>
+      <div className={styles.headerRow}>
+        <span className={styles.fileName}>📄 {fileName}</span>
+        <span className={styles.percentageText}>
+          {progress.is_complete ? '100%' : `${progress.percent}%`}
+        </span>
+      </div>
+
       <div className={styles.barBackground}>
         <div
-          className={styles.barFill}
+          className={`${styles.barFill} ${progress.is_complete ? styles.completeFill : ''}`}
           style={{ width: `${progress.percent}%` }}
         />
       </div>
-      <div style={{ marginTop: '4px', fontSize: '12px', color: '#6b7280' }}>
-        {progress.is_complete
-          ? 'Completed'
-          : progress.is_failed
-          ? `Failed: ${progress.error}`
-          : `Progress: ${progress.percent}%`}
+
+      <div className={styles.stagesGrid}>
+        {progress.stages.map((stage) => {
+          let badgeClass = styles.pendingBadge;
+          let icon = '⚪';
+          if (stage.state === 'done') {
+            badgeClass = styles.doneBadge;
+            icon = '✓';
+          } else if (stage.state === 'active') {
+            badgeClass = styles.activeBadge;
+            icon = '⚡';
+          } else if (stage.state === 'failed') {
+            badgeClass = styles.failedBadge;
+            icon = '✕';
+          }
+
+          return (
+            <div key={stage.key} className={`${styles.stageChip} ${badgeClass}`}>
+              <span className={styles.chipIcon}>{icon}</span>
+              <span>{stage.label}</span>
+            </div>
+          );
+        })}
       </div>
-      <ul style={{ marginTop: '8px', paddingLeft: '16px' }}>
-        {progress.stages.map((stage) => (
-          <li key={stage.key} style={{ marginBottom: '4px' }}>
-            {stage.label} – {stage.state}
-          </li>
-        ))}
-      </ul>
+
+      {progress.is_complete && (
+        <div className={styles.completeBanner}>
+          ✨ AI Extraction Completed & Network Graph Linked
+        </div>
+      )}
+
+      {progress.is_failed && (
+        <div className={styles.failedBanner}>
+          ⚠️ Processing Failed: {progress.error || 'Unknown Error'}
+        </div>
+      )}
     </div>
   );
 }
