@@ -1569,12 +1569,16 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
     const l = label.trim();
     const lower = l.toLowerCase();
 
-    // Filter out CSV header noise, column titles & schema words
+    // Filter out date formats like 2026-09-10, 10/09/2026
+    if (/^\d{4}[-/.]\d{2}[-/.]\d{2}$/.test(l) || /^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}$/.test(l)) return false;
+
+    // Filter out generic noise words & common descriptions
     const genericNoise = new Set([
       'person_id', 'location_id', 'transaction_id', 'source_id', 'target_id', 'receiver_id', 'sender_id',
       'name', 'age', 'location', 'role', 'context', 'details', 'amount_inr', 'method', 'date', 'city',
       'person', 'relationship', 'relationship_type', 'page 1', 'page 2', 'source', 'target',
-      'unknown', 'n/a', 'none', 'null', 'p001', 'p002', 'p003', 'p004', 'l001', 'l002', 'l003', 'l004'
+      'unknown', 'n/a', 'none', 'null', 'p001', 'p002', 'p003', 'p004', 'l001', 'l002', 'l003', 'l004',
+      'office area', 'bus terminal', 'residential area', 'transport area', 'meeting location', 'area', 'terminal'
     ]);
     if (genericNoise.has(lower)) return false;
 
@@ -1612,23 +1616,23 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
     const centerX = width / 2;
     const centerY = height / 2;
 
-    // Circular layout seed centered in viewport
-    const radius = Math.min(width, height) * 0.32;
+    const spreadRadius = Math.min(width, height) * 0.38;
     validNodes.forEach((n: any, idx: number) => {
       const angle = (idx / numNodes) * 2 * Math.PI;
       pos[n.id] = {
-        x: centerX + Math.cos(angle) * radius + (Math.random() - 0.5) * 20,
-        y: centerY + Math.sin(angle) * radius + (Math.random() - 0.5) * 20,
+        x: centerX + Math.cos(angle) * spreadRadius,
+        y: centerY + Math.sin(angle) * spreadRadius,
         vx: 0, vy: 0
       };
     });
 
-    // Run 100 iterations of 2D Force-Directed Simulation
-    const iterations = 100;
-    const damping = 0.85;
+    // 150 iterations with strong collision prevention to stop node overlap
+    const iterations = 150;
+    const damping = 0.82;
+    const minDistance = 110; // Minimum pixel spacing between node centers to avoid overlap
 
     for (let iter = 0; iter < iterations; iter++) {
-      // Repulsion between all node pairs
+      // Repulsion force & hard collision avoidance between all node pairs
       for (let i = 0; i < validNodes.length; i++) {
         for (let j = i + 1; j < validNodes.length; j++) {
           const idA = validNodes[i].id;
@@ -1641,9 +1645,17 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
           let dy = pB.y - pA.y;
           let dist = Math.sqrt(dx * dx + dy * dy) + 0.1;
 
-          const repForce = 5500 / (dist * dist);
-          const fx = (dx / dist) * repForce;
-          const fy = (dy / dist) * repForce;
+          // Strong repulsion
+          const repForce = 12000 / (dist * dist);
+          let fx = (dx / dist) * repForce;
+          let fy = (dy / dist) * repForce;
+
+          // Collision pushback if closer than minDistance
+          if (dist < minDistance) {
+            const overlap = (minDistance - dist) * 0.4;
+            fx += (dx / dist) * overlap;
+            fy += (dy / dist) * overlap;
+          }
 
           pA.vx -= fx; pA.vy -= fy;
           pB.vx += fx; pB.vy += fy;
@@ -1661,8 +1673,8 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
         let dist = Math.sqrt(dx * dx + dy * dy) + 0.1;
 
         const weight = Number(e.weight || e.relation_score || e.confidence || 1.0);
-        const targetDist = Math.max(70, 180 / Math.max(weight, 0.3));
-        const attForce = (dist - targetDist) * 0.05 * Math.min(weight, 2.5);
+        const targetDist = Math.max(120, 260 / Math.max(weight, 0.4));
+        const attForce = (dist - targetDist) * 0.04;
 
         const fx = (dx / dist) * attForce;
         const fy = (dy / dist) * attForce;
@@ -1675,8 +1687,8 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
       validNodes.forEach((n: any) => {
         const p = pos[n.id];
         if (!p) return;
-        p.vx += (centerX - p.x) * 0.01;
-        p.vy += (centerY - p.y) * 0.01;
+        p.vx += (centerX - p.x) * 0.008;
+        p.vy += (centerY - p.y) * 0.008;
         p.x += p.vx;
         p.y += p.vy;
         p.vx *= damping;

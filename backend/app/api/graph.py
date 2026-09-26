@@ -15,18 +15,23 @@ from app.dependencies import get_current_user
 router = APIRouter(tags=["Graph"])
 
 ID_CODE_PATTERN = re.compile(r'^(P|L|T|LOC|ACC|DOC|EVD|ID|REF|SRC|COL)[\d_-]*$', re.IGNORECASE)
+DATE_PATTERN = re.compile(r'^\d{4}[-/.]\d{2}[-/.]\d{2}$|^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}$')
 GENERIC_NOISE_WORDS = {
     'person_id', 'location_id', 'transaction_id', 'source_id', 'target_id', 'receiver_id', 'sender_id',
     'name', 'age', 'location', 'role', 'context', 'details', 'amount_inr', 'method', 'date', 'city',
-    'person', 'location', 'transaction', 'relationship', 'relationship_type', 'page 1', 'page 2',
-    'source', 'target', 'unknown', 'n/a', 'none', 'null', 'p001', 'p002', 'p003', 'p004', 'l001', 'l002', 'l003', 'l004'
+    'person', 'relationship', 'relationship_type', 'page 1', 'page 2',
+    'source', 'target', 'unknown', 'n/a', 'none', 'null', 'p001', 'p002', 'p003', 'p004', 'l001', 'l002', 'l003', 'l004',
+    'office area', 'bus terminal', 'residential area', 'transport area', 'meeting location', 'area', 'terminal', 'location'
 }
 
 def is_valid_proper_noun(label: str) -> bool:
     if not label or len(label.strip()) < 2:
         return False
     val = label.strip()
-    if val.lower() in GENERIC_NOISE_WORDS:
+    lower = val.lower()
+    if lower in GENERIC_NOISE_WORDS:
+        return False
+    if DATE_PATTERN.match(val):
         return False
     if ID_CODE_PATTERN.match(val):
         return False
@@ -109,25 +114,38 @@ def get_case_graph(
         if ent_id not in chunk_to_entities[chunk_id]:
             chunk_to_entities[chunk_id].append(ent_id)
 
-    # Add co-occurrence edges
+    # Track co-occurrences
+    co_occur_counts: dict[tuple[int, int], int] = {}
     for c_id, ent_list in chunk_to_entities.items():
         for i in range(len(ent_list)):
             for j in range(i + 1, len(ent_list)):
                 id1, id2 = ent_list[i], ent_list[j]
                 pair = (min(id1, id2), max(id1, id2))
-                if pair in edge_dict:
-                    edge_dict[pair].weight = round(edge_dict[pair].weight + 0.5, 2)
-                    edge_dict[pair].evidence_count += 1
-                else:
-                    edge_dict[pair] = GraphEdge(
-                        source=id1,
-                        target=id2,
-                        type="CO_OCCURRENCE",
-                        label="SHARED EVIDENCE",
-                        confidence=0.85,
-                        evidence_count=1,
-                        weight=1.5,
-                    )
+                co_occur_counts[pair] = co_occur_counts.get(pair, 0) + 1
+
+    # Add co-occurrence edges with dynamic weight calculation
+    for pair, count in co_occur_counts.items():
+        id1, id2 = pair
+        e1 = next((e for e in entities if e.id == id1), None)
+        e2 = next((e for e in entities if e.id == id2), None)
+        m1 = e1.mention_count if e1 else 1
+        m2 = e2.mention_count if e2 else 1
+
+        dynamic_weight = round(1.2 + (count * 0.7) + (min(m1, m2) * 0.2), 2)
+
+        if pair in edge_dict:
+            edge_dict[pair].weight = round(edge_dict[pair].weight + (count * 0.5), 2)
+            edge_dict[pair].evidence_count += count
+        else:
+            edge_dict[pair] = GraphEdge(
+                source=id1,
+                target=id2,
+                type="CO_OCCURRENCE",
+                label=f"SHARED EVIDENCE ({count})",
+                confidence=min(0.95, 0.75 + (count * 0.05)),
+                evidence_count=count,
+                weight=dynamic_weight,
+            )
 
     # Topological Neural Network Fallback: Ensure sparse graph entities link to nearest community neighbors
     ent_list = [e.id for e in entities]
