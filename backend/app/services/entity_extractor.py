@@ -1,3 +1,4 @@
+# backend/app/services/entity_extractor.py
 """Entity Extractor — LLM-based entity extraction from text chunks"""
 
 import json
