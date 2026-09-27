@@ -61,10 +61,10 @@ class EntityExtractor:
         fallback_entities = self._regex_extract_entities(chunk_content)
         raw_entities = list(fallback_entities)
 
-        # 2. Fast LLM structured extraction attempt for primary chunks
-        if llm.client and (chunk_id is None or chunk_id <= 3):
+        # 2. Fast LLM structured extraction attempt for document text
+        if llm.client:
             try:
-                prompt_text = ENTITY_EXTRACTION_PROMPT.format(text=chunk_content[:2000])
+                prompt_text = ENTITY_EXTRACTION_PROMPT.format(text=chunk_content[:2500])
                 llm_res = llm.generate_structured(prompt_text)
                 if isinstance(llm_res, list):
                     raw_entities.extend(llm_res)
@@ -185,7 +185,18 @@ class EntityExtractor:
         for d in set(dates):
             results.append({"type": "DATE", "value": d, "normalized": d, "confidence": 0.85})
 
-        # 7. Table rows with Entity IDs or Names (e.g. ENT-001 | Arun Kumar | Person)
+        # 7. Officer / Suspect titles (e.g. Inspector Arun, Suspect Ramesh, Shri Vijay)
+        names = re.findall(r'(?:Inspector|Officer|Constable|Shri|Mr\.|Mrs\.|Dr\.|Suspect|Accused)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)', text)
+        for n in set(names):
+            if n.lower() not in IGNORED_ENTITY_WORDS:
+                results.append({"type": "PERSON", "value": n, "normalized": n, "confidence": 0.92})
+
+        # 8. Known & Common Locations (e.g. Maddur, Bangalore, Mysuru, Mandya, Delhi, Police Station, Main Road)
+        locs = re.findall(r'\b(Maddur|Bangalore|Bengaluru|Mysore|Mysuru|Mandya|Chennai|Delhi|Mumbai|Police Station|High Court|District Court|Main Road)\b', text, re.IGNORECASE)
+        for loc in set(locs):
+            results.append({"type": "LOCATION", "value": loc.title(), "normalized": loc.title(), "confidence": 0.90})
+
+        # 9. Table rows with Entity IDs or Names (e.g. ENT-001 | Arun Kumar | Person)
         lines = text.split('\n')
         for line in lines:
             if '|' in line:

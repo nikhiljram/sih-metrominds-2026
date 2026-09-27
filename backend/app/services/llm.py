@@ -124,7 +124,7 @@ class LLMProvider:
         return "\n".join(res)
 
     def generate_structured(self, prompt: str, system_prompt: str = None, temperature: float = 0.1) -> dict:
-        """Generate structured JSON output from LLM."""
+        """Generate structured JSON output from LLM with timeout."""
         if not self.client:
             return {}
 
@@ -136,15 +136,21 @@ class LLMProvider:
         if system_prompt:
             config.system_instruction = system_prompt
 
-        try:
-            response = self.client.models.generate_content(
+        import concurrent.futures
+        def _call_json():
+            res = self.client.models.generate_content(
                 model=self.model,
                 contents=prompt,
                 config=config,
             )
-            return json.loads(response.text)
+            return json.loads(res.text)
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_call_json)
+                return future.result(timeout=6.0)
         except Exception as e:
-            print(f"[WARN] Gemini API structured call failed: {e}")
+            print(f"[WARN] Gemini API structured call timed out or failed: {e}")
             return {}
 
 
