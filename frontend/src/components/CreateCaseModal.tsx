@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import DocumentProgressBar from './DocumentProgressBar';
 import { X } from 'lucide-react';
 import api from '../api';
 import styles from './CreateCaseModal.module.css';
@@ -17,20 +16,15 @@ export default function CreateCaseModal({ isOpen, onClose, onCaseCreated }: Crea
   const [priority, setPriority] = useState('HIGH');
   const [description, setDescription] = useState('');
   const [incidentLocation, setIncidentLocation] = useState('');
-  const [files, setFiles] = useState<File[]>([]);
-  // Track uploaded document IDs for progress display
-  const [uploadedDocs, setUploadedDocs] = useState<Array<{ id: number; name: string }>>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [createdCaseId, setCreatedCaseId] = useState<number | null>(null);
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    setUploadedDocs([]);
     try {
-      const res = await api.post('/cases', {
+      await api.post('/cases', {
         title,
         fir_number: firNumber,
         case_type: caseType,
@@ -38,28 +32,6 @@ export default function CreateCaseModal({ isOpen, onClose, onCaseCreated }: Crea
         description,
         incident_location: incidentLocation,
       });
-      const newCaseId = res.data?.id;
-      setCreatedCaseId(newCaseId);
-      if (newCaseId && files.length > 0) {
-        for (const file of files) {
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('document_type', 'EVIDENCE');
-          try {
-            const uploadRes = await api.post(`/cases/${newCaseId}/documents`, formData, {
-              headers: { 'Content-Type': 'multipart/form-data' },
-            });
-            const docId = uploadRes.data?.id;
-            if (docId) {
-              setUploadedDocs(prev => [...prev, { id: docId, name: file.name }]);
-            }
-          } catch (e) {
-            console.error('Initial document upload error:', e);
-          }
-        }
-        // Allow user to view progress bar reaching 100% completion in under 1 minute
-        await new Promise(resolve => setTimeout(resolve, 3500));
-      }
       setSubmitting(false);
       onCaseCreated();
     } catch (err: any) {
@@ -152,34 +124,12 @@ export default function CreateCaseModal({ isOpen, onClose, onCaseCreated }: Crea
               className={styles.textarea}
             />
           </div>
-          <div>
-            <label className={styles.label}>INITIAL EVIDENCE FILES (FIR, BANK STATEMENTS, DIGITAL DUMPS)</label>
-            <input
-              type="file"
-              multiple
-              onChange={e => setFiles(Array.from(e.target.files || []))}
-              className={styles.fileInput}
-            />
-            {files.length > 0 && (
-              <div className={styles.fileInfo}>
-                {files.length} file(s) attached: {files.map(f => f.name).join(', ')}
-              </div>
-            )}
-            {createdCaseId && uploadedDocs.map(doc => (
-              <DocumentProgressBar
-                key={doc.id}
-                caseId={createdCaseId}
-                documentId={doc.id}
-                fileName={doc.name}
-              />
-            ))}
-          </div>
           <div className={styles.buttonContainer}>
             <button type="button" onClick={onClose} className="secondary">
               Cancel
             </button>
             <button type="submit" disabled={submitting} className="primary">
-              {submitting ? 'Registering & Uploading...' : 'Register Case Dossier'}
+              {submitting ? 'Registering...' : 'Register Case Dossier'}
             </button>
           </div>
         </form>

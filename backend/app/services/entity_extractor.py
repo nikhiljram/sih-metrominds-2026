@@ -64,7 +64,8 @@ class EntityExtractor:
         # 2. Fast LLM structured extraction attempt for primary chunks
         if llm.client and (chunk_id is None or chunk_id <= 3):
             try:
-                llm_res = llm.generate_structured(prompt)
+                prompt_text = ENTITY_EXTRACTION_PROMPT.format(text=chunk_content[:2000])
+                llm_res = llm.generate_structured(prompt_text)
                 if isinstance(llm_res, list):
                     raw_entities.extend(llm_res)
                 elif isinstance(llm_res, dict):

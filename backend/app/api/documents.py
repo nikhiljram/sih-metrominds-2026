@@ -270,6 +270,7 @@ def get_document_processing_status(
         .all()
     )
     entity_samples = [e[0] or e[1] for e in extracted_entities if (e[0] or e[1])]
+    rel_count = db.query(Relationship).filter(Relationship.case_id == case_id).count()
 
     return {
         "document_id": doc.id,

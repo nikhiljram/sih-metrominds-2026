@@ -89,22 +89,6 @@ class RelationshipExtractor:
                     "label": label,
                     "confidence": 0.85
                 })
-                    elif e1.entity_type == "PERSON" and e2.entity_type == "PHONE":
-                        rel_type = "USED_BY"; label = "Phone Intercept Link"
-                    elif e1.entity_type == "PERSON" and e2.entity_type == "VEHICLE":
-                        rel_type = "OWNS"; label = "Vehicle Registration Link"
-                    elif e1.entity_type == "PERSON" and e2.entity_type in ["BANK_ACCOUNT", "AMOUNT"]:
-                        rel_type = "FINANCIAL_LINK"; label = "Financial Trace Link"
-                    elif e1.entity_type == "PERSON" and e2.entity_type == "PERSON":
-                        rel_type = "ASSOCIATED_WITH"; label = "Co-Suspect / Associate Link"
-
-                    raw_relationships.append({
-                        "source": e1.entity_value,
-                        "target": e2.entity_value,
-                        "type": rel_type,
-                        "label": label,
-                        "confidence": 0.85
-                    })
 
         # Build entity lookup by value
         entity_map = {}
