@@ -933,6 +933,10 @@ function CaseTimelineSubView({ caseId }: { caseId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!caseId || caseId === 'undefined' || isNaN(Number(caseId))) {
+      setLoading(false);
+      return;
+    }
     api.get(`/cases/${caseId}/timeline`)
       .then(res => setEvents(res.data || []))
       .catch(() => {})
@@ -968,6 +972,10 @@ function CaseCommunicationsSubView({ caseId }: { caseId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!caseId || caseId === 'undefined' || isNaN(Number(caseId))) {
+      setLoading(false);
+      return;
+    }
     api.get(`/cases/${caseId}/communications`)
       .then(res => setComms(res.data || []))
       .catch(() => {})
@@ -1024,6 +1032,10 @@ function CaseFinancialSubView({ caseId }: { caseId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!caseId || caseId === 'undefined' || isNaN(Number(caseId))) {
+      setLoading(false);
+      return;
+    }
     api.get(`/cases/${caseId}/financial`)
       .then(res => setTxs(res.data || []))
       .catch(() => {})
@@ -1078,6 +1090,10 @@ function CaseRelatedSubView({ caseId }: { caseId: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!caseId || caseId === 'undefined' || isNaN(Number(caseId))) {
+      setLoading(false);
+      return;
+    }
     api.get(`/cases/${caseId}/related`)
       .then(res => setRelated(res.data || []))
       .catch(() => {})

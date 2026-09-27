@@ -103,8 +103,28 @@ def get_case_graph(
     raw_entities = entity_query.all()
     entities = [e for e in raw_entities if is_valid_proper_noun(e.display_name or e.entity_value)]
 
-    # Build nodes
-    entity_ids = {e.id for e in entities}
+    # Deduplicate entities by (normalized_value.lower(), entity_type)
+    canonical_entities: list[Entity] = []
+    canonical_map: dict[str, Entity] = {}
+    id_to_canonical_id: dict[int, int] = {}
+
+    for e in entities:
+        norm_val = (e.normalized_value or e.entity_value or "").strip().lower()
+        key = f"{norm_val}::{e.entity_type}"
+        if not norm_val:
+            continue
+        if key in canonical_map:
+            canonical = canonical_map[key]
+            canonical.mention_count = (canonical.mention_count or 1) + (e.mention_count or 1)
+            canonical.confidence = max(canonical.confidence or 0.8, e.confidence or 0.8)
+            id_to_canonical_id[e.id] = canonical.id
+        else:
+            canonical_map[key] = e
+            canonical_entities.append(e)
+            id_to_canonical_id[e.id] = e.id
+
+    # Build unique nodes
+    entity_ids = {e.id for e in raw_entities}
     nodes = [
         GraphNode(
             id=e.id,
@@ -117,7 +137,7 @@ def get_case_graph(
                 "confidence": e.confidence,
             },
         )
-        for e in entities
+        for e in canonical_entities
     ]
 
     # Fetch direct relationships
@@ -133,7 +153,6 @@ def get_case_graph(
 
     edge_dict: dict[tuple[int, int], GraphEdge] = {}
 
-
     # Detect co-occurrences in same document chunks
     chunk_sources = (
         db.query(EntitySource.chunk_id, EntitySource.entity_id)
@@ -143,10 +162,11 @@ def get_case_graph(
 
     chunk_to_entities: dict[int, list[int]] = {}
     for chunk_id, ent_id in chunk_sources:
+        canon_id = id_to_canonical_id.get(ent_id, ent_id)
         if chunk_id not in chunk_to_entities:
             chunk_to_entities[chunk_id] = []
-        if ent_id not in chunk_to_entities[chunk_id]:
-            chunk_to_entities[chunk_id].append(ent_id)
+        if canon_id not in chunk_to_entities[chunk_id]:
+            chunk_to_entities[chunk_id].append(canon_id)
 
     # Track co-occurrences
     co_occur_counts: dict[tuple[int, int], int] = {}
