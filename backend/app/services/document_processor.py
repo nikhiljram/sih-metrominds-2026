@@ -146,3 +146,10 @@ class DocumentProcessor:
     def _update_status(self, doc: Document, status: str):
         doc.processing_status = status
         self.db.commit()
+        from app.core_logger import log_event
+        log_event("DOCUMENT_PROCESSING_STAGE", {
+            "document_id": doc.id,
+            "filename": doc.original_name,
+            "status": status,
+        })
+        print(f"[DOCUMENT_PIPELINE] Doc #{doc.id} ({doc.original_name}) -> STAGE: {status}", flush=True)
