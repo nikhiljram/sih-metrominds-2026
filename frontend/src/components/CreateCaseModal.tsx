@@ -57,12 +57,14 @@ export default function CreateCaseModal({ isOpen, onClose, onCaseCreated }: Crea
             console.error('Initial document upload error:', e);
           }
         }
+        // Allow user to view progress bar reaching 100% completion in under 1 minute
+        await new Promise(resolve => setTimeout(resolve, 3500));
       }
       setSubmitting(false);
       onCaseCreated();
     } catch (err: any) {
       setSubmitting(false);
-      const msg = err.response?.data?.detail || err.response?.data?.message || 'Failed to create case.';
+      const msg = err.response?.data?.detail || err.response?.data?.message || 'Failed to create case. Ensure backend database is connected and fields are valid.';
       alert(typeof msg === 'string' ? msg : JSON.stringify(msg));
     }
   };

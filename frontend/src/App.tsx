@@ -2008,7 +2008,7 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
         }
       }
 
-      // Attraction along edges (weighted by relation score)
+      // Attraction along edges (dramatically weighted by relation score & evidence frequency)
       rawEdges.forEach((e: any) => {
         const pA = pos[e.source];
         const pB = pos[e.target];
@@ -2018,10 +2018,20 @@ function CaseNetworkSubView({ caseId }: { caseId: string }) {
         let dy = pB.y - pA.y;
         let dist = Math.sqrt(dx * dx + dy * dy) + 0.1;
 
-        const weight = Number(e.weight || e.relation_score || e.confidence || 1.0);
-        const targetDist = Math.max(120, 260 / Math.max(weight, 0.4));
-        const attForce = (dist - targetDist) * 0.04;
+        const weight = Number(e.weight || e.relation_score || e.confidence || 0.5);
+        // Highly related entities -> close together (55px-95px). Weak/unrelated -> far apart (180px-350px)
+        let targetDist = 180;
+        if (weight >= 0.8) {
+          targetDist = 55;
+        } else if (weight >= 0.6) {
+          targetDist = 95;
+        } else if (weight >= 0.4) {
+          targetDist = 180;
+        } else {
+          targetDist = 350;
+        }
 
+        const attForce = (dist - targetDist) * 0.08;
         const fx = (dx / dist) * attForce;
         const fy = (dy / dist) * attForce;
 
