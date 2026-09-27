@@ -34,7 +34,23 @@ export default function DocumentProgressBar({ caseId, documentId, fileName }: Do
     const fetchStatus = async () => {
       try {
         const res = await api.get(`/cases/${caseId}/documents/${documentId}/status`);
-        if (!cancelled) setProgress(res.data);
+        if (!cancelled) {
+          setProgress(res.data);
+          // Live process activity log for Google Chrome Console & Network Tab
+          console.info(
+            `%c[DOCUMENT PIPELINE] ${fileName} | Status: ${res.data.status} (${res.data.percent}%)`,
+            'color: #2563eb; font-weight: 700; background: #eff6ff; padding: 2px 6px; border-radius: 4px;',
+            {
+              documentId,
+              status: res.data.status,
+              percent: res.data.percent,
+              extractedEntities: res.data.extracted_entities || [],
+              relationshipCount: res.data.relationship_count || 0,
+              isComplete: res.data.is_complete,
+              stages: res.data.stages,
+            }
+          );
+        }
       } catch (e) {
         console.error('Failed to fetch document status', e);
       }

@@ -116,10 +116,13 @@ def root():
 
 
 @app.get("/health")
+@app.get("/api/v1/health")
 def health():
     return {"status": "healthy"}
 
 
+@app.get("/logs")
+@app.get("/system-logs")
 @app.get("/api/v1/system-logs")
 def get_live_system_logs(limit: int = 100):
     """Retrieve the latest live system logs directly from the Railway cloud server."""
