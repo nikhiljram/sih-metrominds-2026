@@ -144,7 +144,15 @@ class LLMProvider:
                 contents=prompt,
                 config=config,
             )
-            return json.loads(res.text)
+            raw_text = (res.text or "").strip()
+            if raw_text.startswith("```"):
+                lines = raw_text.splitlines()
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].startswith("```"):
+                    lines = lines[:-1]
+                raw_text = "\n".join(lines).strip()
+            return json.loads(raw_text)
 
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:

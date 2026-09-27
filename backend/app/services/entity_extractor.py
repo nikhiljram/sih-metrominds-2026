@@ -207,6 +207,13 @@ class EntityExtractor:
                         if not p.lower() in IGNORED_ENTITY_WORDS:
                             results.append({"type": "PERSON", "value": p, "normalized": p, "confidence": 0.90})
 
+        # 10. Capitalized Proper Names (e.g. Arun Kumar, Suresh Gowda, Maddur Hub)
+        proper_names = re.findall(r'\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})+)\b', text)
+        for pn in set(proper_names):
+            pn_clean = pn.strip()
+            if len(pn_clean) > 3 and not any(w in pn_clean.lower() for w in IGNORED_ENTITY_WORDS):
+                results.append({"type": "PERSON", "value": pn_clean, "normalized": pn_clean, "confidence": 0.88})
+
         return results
 
 
