@@ -290,7 +290,7 @@ def get_document_processing_status(
 def trigger_manual_reprocessing(
     case_id: int,
     document_id: int,
-    background_tasks: BackgroundTasks = Depends(),
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """Re-trigger background extraction & processing for a document."""
