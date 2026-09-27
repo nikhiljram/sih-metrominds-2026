@@ -9,6 +9,16 @@ database_url = settings.DATABASE_URL
 if database_url.startswith("mysql://"):
     database_url = database_url.replace("mysql://", "mysql+pymysql://", 1)
 
+if database_url.startswith("mysql"):
+    try:
+        from sqlalchemy import create_engine as test_engine
+        t = test_engine(database_url, connect_args={"connect_timeout": 5})
+        conn = t.connect()
+        conn.close()
+    except Exception as e:
+        print(f"[WARN] Railway MySQL connection failed ({e}). Using local database engine fallback.")
+        database_url = "sqlite:///./investigation.db"
+
 if database_url.startswith("sqlite"):
     engine = create_engine(database_url, connect_args={"check_same_thread": False})
 else:

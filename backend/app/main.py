@@ -22,9 +22,11 @@ from app.api.dashboard import router as dashboard_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
-    # Create tables
-    init_db()
-    # Auto-seed database if empty
+    try:
+        init_db()
+    except Exception as e:
+        print(f"[WARN] Database init notice: {e}")
+
     try:
         from scripts.seed import seed_database
         seed_database()
