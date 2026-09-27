@@ -1,6 +1,11 @@
-"""Investigation Intelligence Platform — FastAPI Application"""
-
+import sys
 import os
+
+# Ensure backend root and app package are in sys.path
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
