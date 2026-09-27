@@ -118,3 +118,20 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
+
+
+@app.get("/api/v1/system-logs")
+def get_live_system_logs(limit: int = 100):
+    """Retrieve the latest live system logs directly from the Railway cloud server."""
+    log_path = os.path.join(os.path.dirname(BASE_DIR), "logs", "system.log")
+    if not os.path.exists(log_path):
+        return {"logs": ["No log file found on server yet."]}
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+            return {
+                "total_lines": len(lines),
+                "latest_logs": [line.strip() for line in lines[-limit:]]
+            }
+    except Exception as e:
+        return {"error": str(e)}
