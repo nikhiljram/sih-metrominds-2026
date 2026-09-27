@@ -85,35 +85,30 @@ class DocumentProcessor:
             for dbc in db_chunks:
                 self.db.refresh(dbc)
 
-            # Step 4: Entity extraction
+            # Step 4: AI Entity extraction from document text
             self._update_status(doc, "ENTITY_EXTRACTING")
-            all_entities = []
-            for db_chunk in db_chunks:
-                entities = entity_extractor.extract_from_chunk(
-                    db=self.db,
-                    chunk_content=db_chunk.content,
-                    case_id=doc.case_id,
-                    chunk_id=db_chunk.id,
-                    document_id=doc.id,
-                    page_number=db_chunk.page_start,
-                )
-                all_entities.extend(entities)
+            primary_chunk = db_chunks[0] if db_chunks else None
+            primary_chunk_id = primary_chunk.id if primary_chunk else None
 
-            # Step 5: Relationship extraction & Timeline Events
+            all_entities = entity_extractor.extract_from_chunk(
+                db=self.db,
+                chunk_content=extracted.text[:10000],
+                case_id=doc.case_id,
+                chunk_id=primary_chunk_id,
+                document_id=doc.id,
+                page_number=1,
+            )
+
+            # Step 5: AI Relationship extraction & DB Schema creation
             self._update_status(doc, "RELATIONSHIP_EXTRACTING")
-            for db_chunk in db_chunks:
-                chunk_entities = [
-                    e for e in all_entities
-                    if e.case_id == doc.case_id
-                ]
-                if len(chunk_entities) >= 2:
-                    relationship_extractor.extract_relationships(
-                        db=self.db,
-                        chunk_content=db_chunk.content,
-                        case_id=doc.case_id,
-                        chunk_id=db_chunk.id,
-                        entities=chunk_entities,
-                    )
+            if len(all_entities) >= 2:
+                relationship_extractor.extract_relationships(
+                    db=self.db,
+                    chunk_content=extracted.text[:10000],
+                    case_id=doc.case_id,
+                    chunk_id=primary_chunk_id,
+                    entities=all_entities,
+                )
 
             # Generate automatic Timeline Event for Evidence Ingestion
             from app.models.event import Event

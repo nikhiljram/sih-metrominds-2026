@@ -427,27 +427,12 @@ function CreateCaseModal({ isOpen, onClose, onCaseCreated }: { isOpen: boolean, 
             />
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '11px', fontWeight: 650, color: '#687386', marginBottom: '4px' }}>INITIAL EVIDENCE FILES (FIR, BANK STATEMENTS, DIGITAL DUMPS)</label>
-            <input
-              type="file"
-              multiple
-              onChange={e => setFiles(Array.from(e.target.files || []))}
-              style={{ width: '100%', padding: '8px 12px', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '8px', fontSize: '13px' }}
-            />
-            {files.length > 0 && (
-              <div style={{ fontSize: '12px', color: '#2563eb', marginTop: '4px', fontWeight: 600 }}>
-                {files.length} file(s) attached: {files.map(f => f.name).join(', ')}
-              </div>
-            )}
-          </div>
-
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
             <button type="button" onClick={onClose} className="secondary">
               Cancel
             </button>
             <button type="submit" disabled={submitting} className="primary">
-              {submitting ? 'Registering & Uploading...' : 'Register Case Dossier'}
+              {submitting ? 'Registering...' : 'Register Case Dossier'}
             </button>
           </div>
         </form>
