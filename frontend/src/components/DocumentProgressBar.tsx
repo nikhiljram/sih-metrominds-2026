@@ -139,9 +139,23 @@ export default function DocumentProgressBar({ caseId, documentId, fileName }: Do
         })}
       </div>
 
+      {!progress.is_complete && (
+        <div style={{ margin: '8px 0', fontSize: '12px', color: '#2563eb', display: 'flex', alignItems: 'center', gap: '6px', background: '#eff6ff', padding: '6px 10px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
+          <span style={{ display: 'inline-block', width: '8px', height: '8px', background: '#2563eb', borderRadius: '50%', animation: 'pulse 1s infinite' }} />
+          <strong>Live Stream Activity:</strong> {
+            progress.status === 'EXTRACTING' ? 'Reading and parsing evidence file pages...' :
+            progress.status === 'CHUNKING' ? 'Segmenting evidence content into vector chunks...' :
+            progress.status === 'EMBEDDING' ? 'Generating 768-dim AI semantic embeddings...' :
+            progress.status === 'ENTITY_EXTRACTING' ? `AI Streaming Entities (${(progress.extracted_entities || []).length} found): ${(progress.extracted_entities || []).join(', ') || 'Scanning proper names...'}` :
+            progress.status === 'RELATIONSHIP_EXTRACTING' ? `Mapping Entity Links (${progress.relationship_count || 0} connections created)...` :
+            'Processing document...'
+          }
+        </div>
+      )}
+
       {progress.extracted_entities && progress.extracted_entities.length > 0 && (
         <div className={styles.entityTicker}>
-          🔍 <strong>Extracted Entities:</strong> {progress.extracted_entities.join(' • ')}
+          🔍 <strong>Extracted Entities Stream:</strong> {progress.extracted_entities.join(' • ')}
         </div>
       )}
 
